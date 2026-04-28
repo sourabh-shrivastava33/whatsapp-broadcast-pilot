@@ -1,0 +1,197 @@
+/* ============================================
+   Sidebar — Compact navigation
+   ============================================ */
+
+.sidebar {
+  position: fixed;
+  top: var(--command-strip-height);
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width-collapsed);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  transition: width var(--transition-normal);
+  overflow: hidden;
+}
+
+.sidebar.expanded {
+  width: var(--sidebar-width-expanded);
+}
+
+/* Brand */
+.sidebar-brand {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-lg);
+  gap: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.sidebar-brand:hover {
+  background: var(--bg-surface);
+}
+
+.sidebar-brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+}
+
+.sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.sidebar.expanded .sidebar-brand-text {
+  opacity: 1;
+}
+
+.sidebar-brand-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.sidebar-brand-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* Navigation */
+.sidebar-nav {
+  flex: 1;
+  padding: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  position: relative;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sidebar-nav-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+.sidebar-nav-item.active {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.sidebar-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+}
+
+.sidebar-nav-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+}
+
+.sidebar-nav-label {
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.sidebar.expanded .sidebar-nav-label {
+  opacity: 1;
+}
+
+/* Toggle */
+.sidebar-toggle {
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.sidebar-toggle-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+/* Theme toggle */
+.sidebar-bottom {
+  padding: var(--space-xs) var(--space-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sidebar-theme-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  text-align: left;
+}
+
+.sidebar-theme-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+.sidebar.expanded .sidebar-toggle-btn {
+  transform: rotate(180deg);
+}
+

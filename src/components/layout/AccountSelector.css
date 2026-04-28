@@ -1,0 +1,140 @@
+.account-selector {
+  position: relative;
+  margin: var(--space-xs) var(--space-sm);
+}
+
+.account-selector-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.account-selector-button:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.account-selector-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.account-selector-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.account-selector-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-selector-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-selector-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.account-selector-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 260px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  margin-top: var(--space-xs);
+  z-index: 100;
+  overflow: hidden;
+  animation: fadeIn var(--transition-fast) ease forwards;
+}
+
+.account-selector.expanded .account-selector-dropdown {
+  width: 100%;
+}
+
+.account-selector-header {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+
+.account-selector-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.account-selector-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--transition-fast);
+}
+
+.account-selector-item:last-child {
+  border-bottom: none;
+}
+
+.account-selector-item:hover {
+  background: var(--bg-card-hover);
+}
+
+.account-selector-item.active {
+  background: var(--accent-dim);
+}
+
+.account-selector-item-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.account-selector-item-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.account-selector-item-phone {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.account-selector-item-check {
+  color: var(--accent);
+}

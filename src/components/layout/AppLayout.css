@@ -1,0 +1,22 @@
+/* ============================================
+   App Layout — Main shell
+   ============================================ */
+
+.app-layout {
+  min-height: 100vh;
+  padding-top: var(--command-strip-height);
+}
+
+.app-content {
+  margin-left: var(--sidebar-width-collapsed);
+  min-height: calc(100vh - var(--command-strip-height));
+  padding: var(--space-2xl);
+  transition: margin-left var(--transition-normal);
+}
+
+@media (max-width: 768px) {
+  .app-content {
+    margin-left: 0;
+    padding: var(--space-lg);
+  }
+}

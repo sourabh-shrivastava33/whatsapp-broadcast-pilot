@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id                  String   @id @default(uuid())
+  displayName         String
+  phoneNumberId       String   @unique
+  displayPhoneNumber  String?
+  accessToken         String
+  businessLabel       String?
+  wabaId              String?
+  qualityRating       String?
+  isActive            Boolean  @default(false)
+  isArchived          Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  broadcasts          Broadcast[]
+}
+
+model Contact {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String   @unique
+  tags      Json?    // Use Json type for PostgreSQL
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Template {
+  id             String    @id @default(uuid())
+  metaTemplateId String?   @unique
+  wabaId         String?
+  name           String
+  category       String    @default("MARKETING") // MARKETING, UTILITY, AUTHENTICATION
+  language       String    @default("en_US")
+  useCaseLabel   String?
+  headerType     String    @default("TEXT")      // TEXT, IMAGE, VIDEO, DOCUMENT
+  header         String?                         // Text for text headers
+  mediaUrl       String?                         // URL for media headers
+  body           String
+  footer         String?
+  buttons        Json?     
+  variables      Json?     
+  status         String    @default("draft") 
+  rejectionReason String?
+  isArchived     Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  broadcasts     Broadcast[]
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  url       String
+  filename  String
+  type      String   // IMAGE, VIDEO, AUDIO, DOCUMENT
+  size      Int
+  createdAt DateTime @default(now())
+}
+
+model Broadcast {
+  id         String   @id @default(uuid())
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  contactIds Json     // Use Json type for PostgreSQL
+  status     String   @default("pending") // pending, sending, sent, failed
+  results    Json?    // Use Json type for PostgreSQL
+  sentAt     DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

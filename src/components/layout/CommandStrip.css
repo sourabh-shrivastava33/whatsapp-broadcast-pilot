@@ -1,0 +1,102 @@
+/* ============================================
+   Command Strip — Demo flow indicator
+   ============================================ */
+
+.command-strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--command-strip-height);
+  background: var(--bg-command-strip);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  overflow: hidden;
+}
+
+.command-strip-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.command-strip-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-chip);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  transition: all var(--transition-normal);
+  white-space: nowrap;
+}
+
+.command-strip-step.active {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.command-strip-step.completed {
+  color: var(--text-secondary);
+}
+
+.command-strip-step-number {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  background: rgba(255, 255, 255, 0.06);
+  transition: all var(--transition-normal);
+}
+
+.command-strip-step.active .command-strip-step-number {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+.command-strip-step.completed .command-strip-step-number {
+  background: rgba(0, 168, 132, 0.3);
+  color: var(--accent);
+}
+
+.command-strip-arrow {
+  color: var(--text-muted);
+  opacity: 0.3;
+  flex-shrink: 0;
+}
+
+.command-strip-step.active .command-strip-pulse {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+  opacity: 0.3;
+}
+
+/* Glow line at bottom */
+.command-strip::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent) 50%,
+    transparent 100%
+  );
+  opacity: 0.3;
+}
