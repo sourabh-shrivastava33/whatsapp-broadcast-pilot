@@ -42,3 +42,18 @@ docker-compose.override.yml
 # Prisma
 /server/generated/
 /server/prisma/migrations/
+
+# AI and Local Artifacts
+.gemini/
+test.md
+/server/scratch_*.js
+/server/test_*.js
+/server/debug_*.js
+/server/check_*.js
+/server/step*.js
+/server/mock_webhook.js
+/server/sync_history.js
+/artifacts/
+/walkthrough.md
+/implementation_plan.md
+/task.md

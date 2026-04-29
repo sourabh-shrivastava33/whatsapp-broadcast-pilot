@@ -105,9 +105,31 @@
   margin-bottom: 2px;
 }
 
-.broadcast-row-date {
-  font-size: var(--font-size-xs);
+.broadcast-row.clickable {
+  cursor: pointer;
+  position: relative;
+}
+
+.broadcast-row.clickable:hover {
+  background: var(--bg-card-hover);
+}
+
+.broadcast-row-status-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.row-hover-icon {
+  opacity: 0;
   color: var(--text-muted);
+  transition: all var(--transition-fast);
+  transform: translateX(-4px);
+}
+
+.broadcast-row.clickable:hover .row-hover-icon {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 /* ============================================

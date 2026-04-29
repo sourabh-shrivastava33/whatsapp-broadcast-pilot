@@ -1,5 +1,11 @@
 import React, { useState } from 'react'
-import { Radio, Send, Smartphone, FileText, Users, Zap, CheckCircle, AlertTriangle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { 
+  Users, MessageSquare, Send, Search, Filter, 
+  Smartphone, Layout, CheckCircle, AlertCircle,
+  Zap, Calendar, Clock, BarChart3, Info, HelpCircle,
+  Radio, FileText, AlertTriangle, ExternalLink
+} from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui/EmptyState'
 import { Modal } from '../components/ui/Modal'
@@ -17,6 +23,7 @@ const steps = [
 ]
 
 export default function Broadcast() {
+  const navigate = useNavigate()
   const [showModal, setShowModal] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
   const [sendingState, setSendingState] = useState('idle') // idle | sending | success
@@ -44,16 +51,20 @@ export default function Broadcast() {
   const handleNext = () => setCurrentStep(prev => prev + 1)
   const handleBack = () => setCurrentStep(prev => prev - 1)
 
-  const handleSend = () => {
+  const handleSend = async () => {
     setSendingState('sending')
-    setTimeout(() => {
-      addBroadcast({
+    try {
+      await addBroadcast({
         accountId: draft.accountId,
         templateId: draft.templateId,
         contactIds: draft.contactIds,
       })
       setSendingState('success')
-    }, 1500)
+    } catch (error) {
+      console.error('Broadcast failed:', error)
+      setSendingState('idle')
+      alert('Failed to initiate broadcast. Please check server logs.')
+    }
   }
 
   const renderStep1 = () => (
@@ -263,6 +274,15 @@ export default function Broadcast() {
         </div>
       </div>
 
+      <div className="info-hint mb-6">
+        <Info size={16} className="info-hint-icon" />
+        <p>
+          Broadcasts use Meta-approved templates. Ensure your contacts have opted-in to receive 
+          messages to maintain your account quality rating. 
+          <a href="#" className="info-link" title="Learn more about Meta's broadcast policies"> Learn more</a>
+        </p>
+      </div>
+
       <div className="broadcast-stepper">
         {steps.map((step, idx) => (
           <React.Fragment key={step.id}>
@@ -288,7 +308,11 @@ export default function Broadcast() {
       ) : (
         <div className="broadcasts-list">
           {broadcasts.map((broadcast) => (
-            <div key={broadcast.id} className="broadcast-row">
+            <div 
+              key={broadcast.id} 
+              className="broadcast-row clickable"
+              onClick={() => navigate(`/broadcast/${broadcast.id}`)}
+            >
               <div className="broadcast-row-icon">
                 <Radio size={18} />
               </div>
@@ -300,10 +324,13 @@ export default function Broadcast() {
                   {new Date(broadcast.sentAt).toLocaleString()}
                 </div>
               </div>
-              <span className={`chip chip-${broadcast.status}`}>
-                <span className="chip-dot" />
-                {broadcast.status.charAt(0).toUpperCase() + broadcast.status.slice(1)}
-              </span>
+              <div className="broadcast-row-status-group">
+                <span className={`chip chip-${broadcast.status}`}>
+                  <span className="chip-dot" />
+                  {broadcast.status.charAt(0).toUpperCase() + broadcast.status.slice(1)}
+                </span>
+                <ExternalLink size={14} className="row-hover-icon" />
+              </div>
             </div>
           ))}
         </div>

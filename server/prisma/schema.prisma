@@ -24,36 +24,64 @@ model Account {
 }
 
 model Contact {
-  id        String   @id @default(uuid())
-  name      String
-  phone     String   @unique
-  tags      Json?    // Use Json type for PostgreSQL
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String       @id @default(uuid())
+  name            String
+  phone           String       @unique
+  tags            Json?        // Use Json type for PostgreSQL
+  notes           String?
+  status          String       @default("active") // active, unsubscribed, blocked
+  lastBroadcastAt DateTime?
+  lastReplyAt     DateTime?
+  unreadCount     Int          @default(0)
+  lastMessageAt   DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  messages        MessageLog[]
+  chatMessages    ChatMessage[]
+}
+
+model ChatMessage {
+  id            String   @id @default(uuid())
+  contactId     String
+  contact       Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  fromMe        Boolean  // true if sent by CRM, false if incoming from customer
+  type          String   @default("text") // text, image, template_broadcast
+  body          String?
+  mediaUrl      String?
+  metaMessageId String?  @unique
+  timestamp     DateTime @default(now())
+}
+
+model Segment {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  filters     Json?    // Logic for filtering (tags, status, etc.)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Template {
-  id             String    @id @default(uuid())
-  metaTemplateId String?   @unique
-  wabaId         String?
-  name           String
-  category       String    @default("MARKETING") // MARKETING, UTILITY, AUTHENTICATION
-  language       String    @default("en_US")
-  useCaseLabel   String?
-  headerType     String    @default("TEXT")      // TEXT, IMAGE, VIDEO, DOCUMENT
-  header         String?                         // Text for text headers
-  mediaUrl       String?                         // URL for media headers
-  body           String
-  footer         String?
-  buttons        Json?     
-  variables      Json?     
-  status         String    @default("draft") 
+  id              String      @id @default(uuid())
+  metaTemplateId  String?     @unique
+  wabaId          String?
+  name            String
+  category        String      @default("MARKETING")
+  language        String      @default("en_US")
+  useCaseLabel    String?
+  headerType      String      @default("TEXT")
+  header          String?
+  mediaUrl        String?
+  body            String
+  footer          String?
+  buttons         Json?
+  variables       Json?
+  status          String      @default("draft")
   rejectionReason String?
-  isArchived     Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  broadcasts     Broadcast[]
+  isArchived      Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  broadcasts      Broadcast[]
 }
 
 model Media {
@@ -66,15 +94,51 @@ model Media {
 }
 
 model Broadcast {
-  id         String   @id @default(uuid())
+  id         String       @id @default(uuid())
   accountId  String
-  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account    Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
   templateId String
-  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  contactIds Json     // Use Json type for PostgreSQL
-  status     String   @default("pending") // pending, sending, sent, failed
-  results    Json?    // Use Json type for PostgreSQL
-  sentAt     DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  template   Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  contactIds Json
+  status     String       @default("pending")
+  results    Json?
+  sentAt     DateTime     @default(now())
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  messages   MessageLog[]
+}
+
+model MessageLog {
+  id            String    @id @default(uuid())
+  broadcastId   String
+  broadcast     Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  contactId     String
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status        String    @default("queued") // queued, sent, delivered, read, failed
+  metaMessageId String?   @unique
+  error         String?
+  sentAt        DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model WebhookSetting {
+  id              String   @id @default(uuid())
+  url             String
+  verifyToken     String
+  isActive        Boolean  @default(true)
+  subscriptions   String   @default("messages,statuses")
+  lastSyncAt      DateTime?
+  healthStatus    String   @default("unknown")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

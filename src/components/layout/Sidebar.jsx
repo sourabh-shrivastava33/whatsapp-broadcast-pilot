@@ -9,11 +9,13 @@ import {
   Image as ImageIcon,
   ChevronRight,
   MessageCircle,
+  MessageSquare,
+  Globe,
   Sun,
   Moon
 } from 'lucide-react'
 import { useTheme } from '../../store/ThemeContext'
-import { AccountSelector } from './AccountSelector'
+// import { AccountSelector } from './AccountSelector'
 import './Sidebar.css'
 
 const navItems = [
@@ -23,6 +25,8 @@ const navItems = [
   { path: '/media', label: 'Media Library', icon: ImageIcon },
   { path: '/templates', label: 'Templates', icon: FileText },
   { path: '/broadcast', label: 'Broadcast', icon: Radio },
+  { path: '/inbox', label: 'Inbox', icon: MessageSquare },
+  { path: '/webhooks', label: 'Webhooks', icon: Globe },
 ]
 
 export function Sidebar() {
@@ -46,7 +50,8 @@ export function Sidebar() {
         </div>
       </div>
 
-      <AccountSelector expanded={expanded} />
+      {/* AccountSelector removed as per new flow */}
+      {/* <AccountSelector expanded={expanded} /> */}
 
       {/* Navigation */}
       <nav className="sidebar-nav">

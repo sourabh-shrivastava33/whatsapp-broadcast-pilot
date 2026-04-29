@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Trash2, Save, Eye, AlertCircle, Send, CheckCircle2, XCircle, 
-  Image as ImageIcon, Video as VideoIcon, FileText as FileIcon, Type as TextIcon
+  Image as ImageIcon, Video as VideoIcon, FileText as FileIcon, Type as TextIcon,
+  Info, HelpCircle, Tag, Globe, MessageSquare
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { WhatsAppPreview } from '../components/ui/WhatsAppPreview'

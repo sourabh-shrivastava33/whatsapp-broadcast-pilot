@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import {
   Smartphone, Plus, CheckCircle, Building2, ToggleLeft, ToggleRight,
-  Trash2, Star, RefreshCw, AlertCircle, Wifi
+  Trash2, Star, RefreshCw, AlertCircle, Wifi, Info
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -73,36 +73,68 @@ export default function Accounts() {
               {/* Card Header */}
               <div className="account-card-header" onClick={() => setActiveAccount(account.id)}>
                 <div className="account-card-icon">
-                  <Smartphone size={22} />
+                  <Smartphone size={24} />
                 </div>
                 <div className="account-card-info">
-                  <div className="account-card-name">{account.displayName}</div>
-                  <div className="account-card-number">{account.displayPhoneNumber || account.phoneNumberId}</div>
+                  <div className="account-card-number-large">{account.displayPhoneNumber || account.phoneNumberId}</div>
+                  <div className="account-card-name-sub">{account.displayName}</div>
                   {account.businessLabel && (
-                    <div className="account-card-waba">
-                      <Building2 size={11} /> {account.businessLabel}
+                    <div className="account-card-waba-label">
+                      <Building2 size={12} /> {account.businessLabel}
                     </div>
                   )}
                 </div>
                 {account.id === activeAccountId && (
-                  <Chip label="Active" status="approved" />
+                  <div className="active-badge">
+                    <CheckCircle size={14} />
+                    Active
+                  </div>
                 )}
               </div>
 
-              {/* Status Row */}
-              <div className="account-card-status-row">
-                <div className="status-pill">
-                  <Wifi size={12} />
-                  <span>{account.isActive ? 'Enabled' : 'Disabled'}</span>
+              {/* Account Details Grid */}
+              <div className="account-details-grid">
+                <div className="detail-item">
+                  <span className="detail-label">
+                    WABA ID
+                    <span className="info-icon-wrapper" data-tooltip="WhatsApp Business Account ID from Meta">
+                      <Info size={10} />
+                    </span>
+                  </span>
+                  <span className="detail-value">{account.wabaId || 'N/A'}</span>
                 </div>
-                {account.qualityRating && (
-                  <div className="quality-pill">
-                    {QUALITY_LABEL[account.qualityRating] || account.qualityRating}
-                  </div>
-                )}
-                {account.wabaId && (
-                  <div className="waba-id-pill">WABA: {account.wabaId.slice(0, 8)}…</div>
-                )}
+                <div className="detail-item">
+                  <span className="detail-label">
+                    Phone ID
+                    <span className="info-icon-wrapper" data-tooltip="Unique identifier for this specific phone number">
+                      <Info size={10} />
+                    </span>
+                  </span>
+                  <span className="detail-value">{account.phoneNumberId}</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">
+                    Quality
+                    <span className="info-icon-wrapper" data-tooltip="Meta quality rating based on customer feedback">
+                      <Info size={10} />
+                    </span>
+                  </span>
+                  <span className={`quality-badge ${account.qualityRating?.toLowerCase()}`}>
+                    {QUALITY_LABEL[account.qualityRating] || account.qualityRating || 'Unknown'}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">
+                    Status
+                    <span className="info-icon-wrapper" data-tooltip="Real-time connection status to Meta API">
+                      <Info size={10} />
+                    </span>
+                  </span>
+                  <span className={`status-badge ${account.isActive ? 'online' : 'offline'}`}>
+                    <Wifi size={10} />
+                    {account.isActive ? 'Connected' : 'Disconnected'}
+                  </span>
+                </div>
               </div>
 
               {/* Actions */}
