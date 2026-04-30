@@ -27,13 +27,21 @@ model Contact {
   id              String       @id @default(uuid())
   name            String
   phone           String       @unique
-  tags            Json?        // Use Json type for PostgreSQL
+  tags            Json?        
   notes           String?
-  status          String       @default("active") // active, unsubscribed, blocked
+  brokerageNotes  String?      
+  leadStage       String       @default("NEW") 
+  status          String       @default("active") 
   lastBroadcastAt DateTime?
   lastReplyAt     DateTime?
   unreadCount     Int          @default(0)
   lastMessageAt   DateTime?
+  optInStatus     String       @default("unknown")
+  optInMethod     String?
+  optInTimestamp  DateTime?
+  optOutTimestamp DateTime?
+  optOutReason    String?
+  isBlocklisted   Boolean      @default(false)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   messages        MessageLog[]
@@ -138,6 +146,8 @@ model WebhookSetting {
   isActive        Boolean  @default(true)
   subscriptions   String   @default("messages,statuses")
   lastSyncAt      DateTime?
+  metaStatus      String   @default("unknown")
+  metaError       String?
   healthStatus    String   @default("unknown")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

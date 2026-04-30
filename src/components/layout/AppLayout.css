@@ -1,22 +1,80 @@
-/* ============================================
-   App Layout — Main shell
-   ============================================ */
-
 .app-layout {
-  min-height: 100vh;
-  padding-top: var(--command-strip-height);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Prevent window-level scroll */
 }
 
 .app-content {
-  margin-left: var(--sidebar-width-collapsed);
-  min-height: calc(100vh - var(--command-strip-height));
-  padding: var(--space-2xl);
+  flex: 1;
   transition: margin-left var(--transition-normal);
+  padding: 20px;
+  overflow-y: auto; /* Allow content to scroll if needed */
+  display: flex;
+  flex-direction: column;
+}
+
+.page-container {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Mobile Header */
+.mobile-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--mobile-header-height);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-lg);
+  z-index: 4500;
+  backdrop-filter: var(--blur-premium);
+  -webkit-backdrop-filter: var(--blur-premium);
+}
+
+.mobile-header-side {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.mobile-header-side:last-child {
+  justify-content: flex-end;
+}
+
+.mobile-menu-btn {
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+
+.mobile-logo {
+  font-weight: 900;
+  font-size: var(--font-size-lg);
+  letter-spacing: -0.04em;
+  color: var(--accent);
+  text-transform: none;
+}
+
+.mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 900;
+  animation: fadeIn var(--transition-fast);
 }
 
 @media (max-width: 768px) {
   .app-content {
-    margin-left: 0;
-    padding: var(--space-lg);
+    padding: var(--space-md);
   }
 }

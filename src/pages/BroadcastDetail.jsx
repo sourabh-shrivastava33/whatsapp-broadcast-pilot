@@ -13,7 +13,9 @@ import {
   Clock,
   ExternalLink,
   Search,
-  MessageSquare
+  MessageSquare,
+  BarChart3,
+  Zap
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import './BroadcastDetail.css'
@@ -57,11 +59,11 @@ export default function BroadcastDetail() {
               : m
           );
 
-          // Recalculate stats based on updated messages
+          // Recalculate stats based on updated messages (Cumulative Logic)
           const newStats = {
             total: updatedMessages.length,
-            sent: updatedMessages.filter(m => m.status === 'sent').length,
-            delivered: updatedMessages.filter(m => m.status === 'delivered').length,
+            sent: updatedMessages.filter(m => !['queued', 'failed'].includes(m.status)).length,
+            delivered: updatedMessages.filter(m => ['delivered', 'read'].includes(m.status)).length,
             read: updatedMessages.filter(m => m.status === 'read').length,
             failed: updatedMessages.filter(m => m.status === 'failed').length,
           };
@@ -158,12 +160,17 @@ export default function BroadcastDetail() {
           <div className="stat-card">
             <div className="stat-label"><CheckCheck size={14} /> Delivered</div>
             <div className="stat-value">{stats.delivered}</div>
-            <div className="stat-percent neutral">{deliveryRate}% Delivery</div>
+            <div className="stat-percent neutral">{data.metrics?.deliveryRate || 0}% Delivery</div>
           </div>
           <div className="stat-card">
             <div className="stat-label"><Eye size={14} /> Total Reads</div>
             <div className="stat-value">{stats.read}</div>
-            <div className="stat-percent positive">{openRate}% Open Rate</div>
+            <div className="stat-percent positive">{data.metrics?.readRate || 0}% Read Rate</div>
+          </div>
+          <div className="stat-card" style={{ borderLeft: '2px solid var(--accent)' }}>
+            <div className="stat-label"><Zap size={14} color="var(--accent)" /> Est. Cost</div>
+            <div className="stat-value" style={{ color: 'var(--accent)' }}>${data.metrics?.estimatedCost || '0.00'}</div>
+            <div className="stat-percent neutral">Meta Business API</div>
           </div>
         </div>
 
@@ -171,8 +178,23 @@ export default function BroadcastDetail() {
           {/* Left Column: Progress & Recipients */}
           <div className="detail-column">
             <div className="delivery-overview">
-              <h2 className="section-title"><Smartphone size={20} color="var(--accent)" /> Delivery Status Breakdown</h2>
-              <div className="progress-group">
+              <h2 className="section-title"><BarChart3 size={20} color="var(--accent)" /> Campaign Analytics</h2>
+              <div className="analytics-summary-cards">
+                <div className="analytics-card">
+                  <span className="analytics-label">Delivery Rate</span>
+                  <span className="analytics-value">{data.metrics?.deliveryRate}%</span>
+                </div>
+                <div className="analytics-card">
+                  <span className="analytics-label">Open Rate</span>
+                  <span className="analytics-value">{data.metrics?.readRate}%</span>
+                </div>
+                <div className="analytics-card">
+                  <span className="analytics-label">Failure Rate</span>
+                  <span className="analytics-value">{data.metrics?.failureRate}%</span>
+                </div>
+              </div>
+              
+              <div className="progress-group" style={{ marginTop: 'var(--space-lg)' }}>
                 <div className="progress-item">
                   <div className="progress-label-row">
                     <span>Sent</span>
@@ -188,16 +210,16 @@ export default function BroadcastDetail() {
                     <span>{stats.delivered} / {stats.sent || 1}</span>
                   </div>
                   <div className="progress-bar-bg">
-                    <div className="progress-bar-fill" style={{ width: `${deliveryRate}%`, background: 'var(--accent)' }} />
+                    <div className="progress-bar-fill" style={{ width: `${data.metrics?.deliveryRate}%`, background: 'var(--accent)' }} />
                   </div>
                 </div>
                 <div className="progress-item">
                   <div className="progress-label-row">
                     <span>Read</span>
-                    <span>{stats.read} / {stats.sent || 1}</span>
+                    <span>{stats.read} / {stats.delivered || 1}</span>
                   </div>
                   <div className="progress-bar-bg">
-                    <div className="progress-bar-fill" style={{ width: `${openRate}%`, background: '#2ecc71' }} />
+                    <div className="progress-bar-fill" style={{ width: `${data.metrics?.readRate}%`, background: '#2ecc71' }} />
                   </div>
                 </div>
               </div>

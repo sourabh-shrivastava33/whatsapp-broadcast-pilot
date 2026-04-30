@@ -33,6 +33,45 @@
   transition: background var(--transition-fast);
 }
 
+@media (max-width: 768px) {
+  .contact-row {
+    padding: var(--space-lg);
+    gap: var(--space-md);
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    grid-template-areas: 
+      "avatar info actions"
+      "tags tags tags";
+    align-items: center;
+    overflow: hidden; /* Prevent overflow */
+  }
+  
+  .contact-avatar { grid-area: avatar; width: 44px; height: 44px; }
+  .contact-info { 
+    grid-area: info; 
+    min-width: 0; /* Important for flex/grid wrapping */
+  }
+  .contact-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .contact-actions { 
+    grid-area: actions; 
+    opacity: 1; 
+    position: relative; 
+    display: flex;
+    gap: 4px;
+  }
+  .contact-tags { 
+    grid-area: tags; 
+    margin-top: 8px; 
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+}
+
 .contact-row:last-child {
   border-bottom: none;
 }
@@ -80,6 +119,13 @@
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .contact-tags {
+    width: 100%;
+    margin-top: 4px;
+  }
 }
 
 .contact-tag {

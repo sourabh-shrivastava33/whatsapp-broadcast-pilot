@@ -89,5 +89,25 @@ export function useContacts() {
         console.error(err)
       }
     },
+    
+    blockContact: async (id) => {
+      try {
+        const res = await fetch(`${API_URL}/${id}/block`, { method: 'POST' })
+        const { contact } = await res.json()
+        if (contact) dispatch({ type: 'UPDATE_CONTACT', payload: contact })
+      } catch (err) {
+        console.error(err)
+      }
+    },
+    
+    unblockContact: async (id) => {
+      try {
+        const res = await fetch(`${API_URL}/${id}/unblock`, { method: 'POST' })
+        const { contact } = await res.json()
+        if (contact) dispatch({ type: 'UPDATE_CONTACT', payload: contact })
+      } catch (err) {
+        console.error(err)
+      }
+    },
   }
 }

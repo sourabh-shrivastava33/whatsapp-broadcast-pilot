@@ -30,6 +30,9 @@ export function CommandStrip() {
     }
   }, [location.pathname])
 
+  const isFlowPage = demoSteps.some(s => s.path === location.pathname) || location.pathname === '/'
+  if (!isFlowPage) return null
+
   return (
     <div className="command-strip">
       <div className="command-strip-inner">

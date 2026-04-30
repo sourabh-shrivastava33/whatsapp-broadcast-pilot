@@ -7,6 +7,8 @@ import pg from "pg";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import {
   META_API_VERSION,
   META_API_BASE_URL,
@@ -15,6 +17,7 @@ import {
   BROADCAST_STATUS,
   QUALITY_RATINGS,
 } from "./constants.js";
+import { runBroadcast, TIER_LIMITS } from "./broadcastEngine.js";
 
 import { Server } from "socket.io";
 import http from "http";
@@ -22,19 +25,85 @@ import crypto from "crypto";
 
 dotenv.config();
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
+
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const app = express();
-app.use(cors()); // Allow all origins for dev
+
+// ─── Security Headers (Helmet) ────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled: frontend is served separately; enabling breaks API responses
+  crossOriginEmbedderPolicy: false,
+}));
+
+// ─── CORS ─────────────────────────────────────────────────────────
+const corsOptions = {
+  origin: IS_PRODUCTION ? ALLOWED_ORIGIN : "*",
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+};
+app.use(cors(corsOptions));
+
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+    origin: IS_PRODUCTION ? ALLOWED_ORIGIN : "*",
+    methods: ["GET", "POST"],
+  },
 });
+
+// ─── Rate Limiters ────────────────────────────────────────────────
+
+/** General API limiter: 200 requests per 15 minutes per IP */
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later." },
+});
+
+/** Broadcast limiter: 10 per 15 minutes (prevent runaway broadcast triggers) */
+const broadcastLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Broadcast rate limit exceeded. Max 10 broadcasts per 15 minutes." },
+});
+
+/** Webhook limiter: 1000 per 15 minutes (Meta sends bursts of status updates) */
+const webhookLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => false,
+});
+
+app.use("/api/webhooks", webhookLimiter);
+app.use("/api", generalLimiter);
+
+// ─── Fetch with Timeout Utility ───────────────────────────────────
+
+/**
+ * A drop-in replacement for fetch() with a configurable AbortController timeout.
+ * Node 18 native fetch ignores { timeout } in RequestInit — this fixes that.
+ * @param {string} url
+ * @param {RequestInit} [options]
+ * @param {number} [timeoutMs=10000]
+ * @returns {Promise<Response>}
+ */
+export function fetchWithTimeout(url, options = {}, timeoutMs = 10_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+    clearTimeout(timer)
+  );
+}
 
 const PORT = process.env.PORT || 3001;
 
@@ -147,6 +216,14 @@ app.get("/api/media/:filename", (req, res) => {
 // ============================================
 // Helpers
 // ============================================
+
+/**
+ * Normalizes phone numbers to E.164-like format (digits only)
+ */
+const normalizePhone = (phone) => {
+  if (!phone) return "";
+  return phone.replace(/\D/g, "");
+};
 
 /**
  * Removes sensitive fields from account objects before sending to frontend
@@ -263,7 +340,7 @@ app.post("/api/meta/discover", async (req, res) => {
     let lastError = null;
 
     // Strategy 1: Owned WABAs
-    const ownedRes = await fetch(
+    const ownedRes = await fetchWithTimeout(
       `${META_API_BASE_URL}/${META_API_VERSION}/${businessId}/owned_whatsapp_business_accounts`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -273,7 +350,7 @@ app.post("/api/meta/discover", async (req, res) => {
 
     if (wabaData.error) {
       // Strategy 2: Client WABAs
-      const clientRes = await fetch(
+      const clientRes = await fetchWithTimeout(
         `${META_API_BASE_URL}/${META_API_VERSION}/${businessId}/client_whatsapp_business_accounts`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -284,7 +361,7 @@ app.post("/api/meta/discover", async (req, res) => {
 
     if (!wabaData.error && wabaData.data) {
       for (const waba of wabaData.data) {
-        const phoneRes = await fetch(
+        const phoneRes = await fetchWithTimeout(
           `${META_API_BASE_URL}/${META_API_VERSION}/${waba.id}/phone_numbers`,
           {
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -309,7 +386,7 @@ app.post("/api/meta/discover", async (req, res) => {
 
     // Strategy 3: Direct WABA ID
     if (discoveredNumbers.length === 0) {
-      const directRes = await fetch(
+      const directRes = await fetchWithTimeout(
         `${META_API_BASE_URL}/${META_API_VERSION}/${businessId}/phone_numbers`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -355,7 +432,7 @@ app.post("/api/meta/sync-templates", async (req, res) => {
     let errors = [];
 
     for (const account of accounts) {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `${META_API_BASE_URL}/${META_API_VERSION}/${account.wabaId}/message_templates?fields=name,status,rejected_reason,category,language,components&limit=1000`,
         {
           headers: { Authorization: `Bearer ${account.accessToken}` },
@@ -477,6 +554,43 @@ app.get("/api/accounts", async (req, res) => {
   }
 });
 
+app.get("/api/accounts/:id/health", async (req, res) => {
+  try {
+    const account = await prisma.account.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!account) return res.status(404).json({ error: "Account not found" });
+
+    // Fetch Phone Number Health from Meta
+    const phoneRes = await fetchWithTimeout(
+      `${META_API_BASE_URL}/${META_API_VERSION}/${account.phoneNumberId}?fields=messaging_limit_tier,quality_rating,status,id,display_phone_number,verified_name`,
+      {
+        headers: { Authorization: `Bearer ${account.accessToken}` },
+      }
+    );
+    const phoneData = await phoneRes.json();
+
+    if (!phoneRes.ok) throw new Error(phoneData.error?.message || "Meta API Error");
+
+    // Fetch WABA Account health
+    const wabaRes = await fetchWithTimeout(
+      `${META_API_BASE_URL}/${META_API_VERSION}/${account.wabaId}?fields=id,name,status,account_mode`,
+      {
+        headers: { Authorization: `Bearer ${account.accessToken}` },
+      }
+    );
+    const wabaData = await wabaRes.json();
+
+    res.json({
+      phone: phoneData,
+      waba: wabaData,
+      lastUpdated: new Date()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.put("/api/accounts/:id/enable", async (req, res) => {
   try {
     const account = await prisma.account.update({
@@ -517,6 +631,19 @@ app.delete("/api/accounts/:id", async (req, res) => {
 // Contacts API
 // ============================================
 
+app.patch("/api/contacts/:id", async (req, res) => {
+  try {
+    const { leadStage, brokerageNotes, notes, tags } = req.body;
+    const contact = await prisma.contact.update({
+      where: { id: req.params.id },
+      data: { leadStage, brokerageNotes, notes, tags },
+    });
+    res.json(contact);
+  } catch (error) {
+    res.status(500).json({ error: "Update failed" });
+  }
+});
+
 app.get("/api/contacts", async (req, res) => {
   try {
     const contacts = await prisma.contact.findMany({
@@ -530,7 +657,10 @@ app.get("/api/contacts", async (req, res) => {
 
 app.post("/api/contacts", async (req, res) => {
   try {
-    const { name, phone, tags, notes } = req.body;
+    let { name, phone, tags, notes } = req.body;
+    phone = normalizePhone(phone);
+    if (!phone) return res.status(400).json({ error: "Valid phone number required" });
+
     const contact = await prisma.contact.upsert({
       where: { phone },
       update: { name, tags, notes },
@@ -555,27 +685,34 @@ app.post("/api/contacts/import", async (req, res) => {
   try {
     for (const c of contacts) {
       try {
-        if (!c.phone) {
-          errors.push(`Missing phone for contact: ${c.name || "Unknown"}`);
+        const normalizedPhone = normalizePhone(c.phone);
+        if (!normalizedPhone) {
+          errors.push(`Invalid phone for contact: ${c.name || "Unknown"}`);
           continue;
         }
 
         const existing = await prisma.contact.findUnique({
-          where: { phone: c.phone },
+          where: { phone: normalizedPhone },
         });
 
         await prisma.contact.upsert({
-          where: { phone: c.phone },
+          where: { phone: normalizedPhone },
           update: {
             name: c.name || undefined,
             tags: c.tags || undefined,
             notes: c.notes || undefined,
+            optInStatus: c.optInStatus || undefined,
+            optInMethod: c.optInMethod || undefined,
+            optInTimestamp: c.optInTimestamp ? new Date(c.optInTimestamp) : undefined,
           },
           create: {
             name: c.name || "Unknown",
-            phone: c.phone,
+            phone: normalizedPhone,
             tags: c.tags || [],
             notes: c.notes || "",
+            optInStatus: c.optInStatus || "unknown",
+            optInMethod: c.optInMethod || null,
+            optInTimestamp: c.optInTimestamp ? new Date(c.optInTimestamp) : null,
           },
         });
 
@@ -602,6 +739,70 @@ app.post("/api/contacts/import", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: "Bulk import failed" });
+  }
+});
+
+// ============================================
+// Blocklist API
+// ============================================
+
+app.get("/api/contacts/blocklist", async (req, res) => {
+  try {
+    const blockedContacts = await prisma.contact.findMany({
+      where: { isBlocklisted: true },
+      orderBy: { updatedAt: "desc" },
+    });
+    res.json(blockedContacts);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch blocklist" });
+  }
+});
+
+app.post("/api/contacts/:id/block", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const contact = await prisma.contact.update({
+      where: { id },
+      data: {
+        isBlocklisted: true,
+        optInStatus: "opted_out",
+        optOutReason: "meta_block",
+        optOutTimestamp: new Date(),
+      },
+    });
+    await logAction("CONTACT_BLOCKED", "Contact", id, { phone: contact.phone });
+    
+    // Emit socket event for real-time updates
+    io.emit("contact_blocked", { contactId: id, phone: contact.phone });
+    
+    res.json({ success: true, contact });
+  } catch (error) {
+    console.error("Block error:", error);
+    res.status(500).json({ error: "Failed to block contact" });
+  }
+});
+
+app.post("/api/contacts/:id/unblock", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const contact = await prisma.contact.update({
+      where: { id },
+      data: {
+        isBlocklisted: false,
+        optInStatus: "unknown",
+        optOutReason: null,
+        optOutTimestamp: null,
+      },
+    });
+    await logAction("CONTACT_UNBLOCKED", "Contact", id, { phone: contact.phone });
+    
+    // Emit socket event for real-time updates
+    io.emit("contact_unblocked", { contactId: id, phone: contact.phone });
+    
+    res.json({ success: true, contact });
+  } catch (error) {
+    console.error("Unblock error:", error);
+    res.status(500).json({ error: "Failed to unblock contact" });
   }
 });
 
@@ -654,20 +855,14 @@ app.get("/api/segments/:id/contacts", async (req, res) => {
     // If using PostgreSQL, array_contains works. If using SQLite, it's different.
     // The schema says postgresql, so we should use valid Prisma PG filters.
     
-    const contacts = await prisma.contact.findMany({
-      where: {
-        AND: [
-          tags && tags.length > 0 ? {
-            tags: {
-              path: [],
-              array_contains: tags
-            }
-          } : {}
-        ]
-      }
+    const contacts = await prisma.contact.findMany();
+    const filtered = contacts.filter(c => {
+      if (!tags || tags.length === 0) return true;
+      const contactTags = Array.isArray(c.tags) ? c.tags : JSON.parse(c.tags || "[]");
+      return tags.every(t => contactTags.includes(t));
     });
 
-    res.json(contacts);
+    res.json(filtered);
   } catch (error) {
     console.error("Filter error:", error);
     res.status(500).json({ error: "Failed to fetch segment contacts" });
@@ -730,8 +925,90 @@ app.put("/api/templates/:id", async (req, res) => {
   }
 });
 
+
+// ============================================
+// Meta Media Upload Helper
+// ============================================
+
+/**
+ * Uploads a file to Meta's Resumable Upload API for Templates.
+ * Requires the App ID and a specific upload session.
+ */
+async function uploadMediaToMeta(filePath, accessToken, appId) {
+  try {
+    const stats = fs.statSync(filePath);
+    const fileContent = fs.readFileSync(filePath);
+    const mimeType = path.extname(filePath) === '.png' ? 'image/png' : 
+                     path.extname(filePath) === '.jpg' || path.extname(filePath) === '.jpeg' ? 'image/jpeg' :
+                     path.extname(filePath) === '.mp4' ? 'video/mp4' : 'application/pdf';
+
+    // 1. Start Upload Session
+    const startRes = await fetchWithTimeout(`${META_API_BASE_URL}/${META_API_VERSION}/${appId}/uploads?file_length=${stats.size}&file_type=${mimeType}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    const startData = await startRes.json();
+    if (!startRes.ok) throw new Error(startData.error?.message || "Failed to start upload");
+
+    const sessionId = startData.id;
+
+    // 2. Upload the file data
+    const uploadRes = await fetchWithTimeout(`${META_API_BASE_URL}/${META_API_VERSION}/${sessionId}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'file_offset': '0',
+        'Content-Type': 'application/octet-stream'
+      },
+      body: fileContent
+    });
+    const uploadData = await uploadRes.json();
+    if (!uploadRes.ok) throw new Error(uploadData.error?.message || "Failed to upload media");
+
+    return uploadData.h; // The handle
+  } catch (error) {
+    console.error("❌ Media Upload Failed:", error.message);
+    throw error;
+  }
+}
+
+/**
+ * Uploads a file to Meta's Media API for use in direct messages.
+ * Returns the media ID.
+ */
+async function uploadMessageMediaToMeta(file, accessToken, phoneNumberId) {
+  try {
+    const formData = new FormData();
+    const blob = new Blob([fs.readFileSync(file.path)], { type: file.mimetype });
+    formData.append("file", blob, file.originalname);
+    formData.append("messaging_product", "whatsapp");
+
+    const response = await fetchWithTimeout(
+      `${META_API_BASE_URL}/${META_API_VERSION}/${phoneNumberId}/media`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: formData,
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || "Meta Media Upload Failed");
+
+    return data.id;
+  } catch (error) {
+    console.error("❌ Message Media Upload Failed:", error.message);
+    throw error;
+  }
+}
+
 app.post("/api/templates/:id/submit", async (req, res) => {
   try {
+    const appId = process.env.META_APP_ID;
+    if (!appId) return res.status(400).json({ error: "META_APP_ID missing in .env" });
+
     const sourceTemplate = await prisma.template.findUnique({
       where: { id: req.params.id },
     });
@@ -739,19 +1016,17 @@ app.post("/api/templates/:id/submit", async (req, res) => {
       where: { isActive: true, isArchived: false },
     });
     if (!sourceTemplate || activeAccounts.length === 0)
-      return res.status(400).json({ error: "Invalid state" });
+      return res.status(400).json({ error: "Invalid state: No active accounts found" });
 
+    // Construct components...
     const getVarNums = (text) =>
       text
         ? [
             ...new Set([...text.matchAll(/\{\{(\d+)\}\}/g)].map((m) => m[1])),
           ].sort((a, b) => Number(a) - Number(b))
         : [];
-    const allVars = Array.isArray(sourceTemplate.variables)
-      ? sourceTemplate.variables
-      : [];
-    const getSample = (num) =>
-      allVars.find((v) => String(v.num) === String(num))?.sample || "sample";
+    const allVars = Array.isArray(sourceTemplate.variables) ? sourceTemplate.variables : [];
+    const getSample = (num) => allVars.find((v) => String(v.num) === String(num))?.sample || "sample";
 
     const bodyVars = getVarNums(sourceTemplate.body);
     const bodyComp = { type: "BODY", text: sourceTemplate.body };
@@ -759,25 +1034,36 @@ app.post("/api/templates/:id/submit", async (req, res) => {
       bodyComp.example = { body_text: [bodyVars.map(getSample)] };
     const components = [bodyComp];
 
-    if (sourceTemplate.headerType !== "TEXT") {
+    // Handle Media Header
+    let mediaHandle = null;
+    if (sourceTemplate.headerType !== "TEXT" && sourceTemplate.mediaUrl) {
+      // Check if it's a local file
+      if (sourceTemplate.mediaUrl.includes("localhost")) {
+        const fileName = sourceTemplate.mediaUrl.split("/").pop();
+        const filePath = path.join("uploads", fileName);
+        if (fs.existsSync(filePath)) {
+          console.log(`📤 Uploading local media to Meta: ${fileName}`);
+          // Use the first active account's token for the upload
+          mediaHandle = await uploadMediaToMeta(filePath, activeAccounts[0].accessToken, appId);
+        }
+      }
+
       const headerComp = {
         type: "HEADER",
-        format: sourceTemplate.headerType, // IMAGE, VIDEO, DOCUMENT
+        format: sourceTemplate.headerType,
       };
-      // For media templates, Meta requires an example.
-      // Ideally we'd use a media handle from an upload,
-      // but for now we can use the mediaUrl as a sample.
-      if (sourceTemplate.mediaUrl) {
+      
+      if (mediaHandle) {
+        headerComp.example = { header_handle: [mediaHandle] };
+      } else if (sourceTemplate.mediaUrl) {
+        // Fallback to URL if it's not local or upload failed but we want to try anyway
         headerComp.example = { header_handle: [sourceTemplate.mediaUrl] };
       }
+      
       components.unshift(headerComp);
     } else if (sourceTemplate.header) {
       const headerVars = getVarNums(sourceTemplate.header);
-      const headerComp = {
-        type: "HEADER",
-        format: "TEXT",
-        text: sourceTemplate.header,
-      };
+      const headerComp = { type: "HEADER", format: "TEXT", text: sourceTemplate.header };
       if (headerVars.length > 0)
         headerComp.example = { header_text: headerVars.map(getSample) };
       components.unshift(headerComp);
@@ -807,29 +1093,39 @@ app.post("/api/templates/:id/submit", async (req, res) => {
 
     const uniqueWabas = [...new Set(activeAccounts.map((a) => a.wabaId))];
     const results = [];
+    const errors = [];
+
     for (const wabaId of uniqueWabas) {
       const account = activeAccounts.find((a) => a.wabaId === wabaId);
-      const response = await fetch(
-        `${META_API_BASE_URL}/${META_API_VERSION}/${wabaId}/message_templates`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${account.accessToken}`,
-            "Content-Type": "application/json",
+      try {
+        const response = await fetchWithTimeout(
+          `${META_API_BASE_URL}/${META_API_VERSION}/${wabaId}/message_templates`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${account.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: sourceTemplate.name,
+              category: sourceTemplate.category,
+              language: sourceTemplate.language || DEFAULT_TEMPLATE_LANGUAGE,
+              components,
+            }),
           },
-          body: JSON.stringify({
-            name: sourceTemplate.name,
-            category: sourceTemplate.category,
-            language: sourceTemplate.language || DEFAULT_TEMPLATE_LANGUAGE,
-            components,
-          }),
-        },
-      );
-      const data = await response.json();
-      if (!data.error) {
+        );
+        const data = await response.json();
+        
+        if (!response.ok || data.error) {
+          console.error(`❌ Meta Template Submission Failed for WABA ${wabaId}:`, data.error?.message || "Unknown error");
+          errors.push(`WABA ${wabaId}: ${data.error?.message || "Unknown error"}`);
+          continue;
+        }
+
         let status = (data.status || "pending").toLowerCase();
         if (status.includes("pending")) status = TEMPLATE_STATUS.PENDING;
         else if (status.includes("approved")) status = TEMPLATE_STATUS.APPROVED;
+
         await prisma.template.upsert({
           where: { metaTemplateId: data.id },
           update: { status, wabaId, isArchived: false },
@@ -843,13 +1139,25 @@ app.post("/api/templates/:id/submit", async (req, res) => {
           },
         });
         results.push(wabaId);
+      } catch (err) {
+        console.error(`❌ Submission fetch error for WABA ${wabaId}:`, err.message);
+        errors.push(`WABA ${wabaId}: ${err.message}`);
       }
     }
-    if (results.length > 0 && !sourceTemplate.wabaId)
+
+    if (results.length === 0) {
+      return res.status(400).json({ 
+        error: "Submission failed for all accounts", 
+        details: errors 
+      });
+    }
+
+    if (results.length > 0 && !sourceTemplate.wabaId) {
       await prisma.template.update({
         where: { id: sourceTemplate.id },
         data: { isArchived: true },
       });
+    }
     res.json({ success: true, submittedTo: results });
   } catch (error) {
     res.status(500).json({ error: "Submission failed" });
@@ -878,19 +1186,30 @@ app.get("/api/broadcasts/:id", async (req, res) => {
       return res.status(404).json({ error: "Broadcast not found" });
     }
 
-    // Aggregated stats
+    // Aggregated stats (Cumulative Logic)
     const stats = {
       total: broadcast.messages.length,
-      sent: broadcast.messages.filter((m) => m.status === "sent").length,
-      delivered: broadcast.messages.filter((m) => m.status === "delivered").length,
+      queued: broadcast.messages.filter((m) => m.status === "queued").length,
+      sent: broadcast.messages.filter((m) => !["queued", "failed"].includes(m.status)).length,
+      delivered: broadcast.messages.filter((m) => ["delivered", "read"].includes(m.status)).length,
       read: broadcast.messages.filter((m) => m.status === "read").length,
       failed: broadcast.messages.filter((m) => m.status === "failed").length,
+    };
+
+    // Calculate professional metrics
+    const metrics = {
+      deliveryRate: stats.sent > 0 ? Math.round((stats.delivered / stats.sent) * 100) : 0,
+      readRate: stats.delivered > 0 ? Math.round((stats.read / stats.delivered) * 100) : 0,
+      engagementRate: stats.sent > 0 ? Math.round((stats.read / stats.sent) * 100) : 0,
+      failureRate: stats.total > 0 ? Math.round((stats.failed / stats.total) * 100) : 0,
+      estimatedCost: (stats.total * 0.015).toFixed(2), // Production mock cost
     };
 
     res.json({
       ...broadcast,
       account: sanitizeAccount(broadcast.account),
       stats,
+      metrics,
     });
   } catch (error) {
     console.error("Fetch detail failed:", error);
@@ -912,181 +1231,213 @@ app.get("/api/broadcasts", async (req, res) => {
   }
 });
 
-app.post("/api/broadcasts", async (req, res) => {
+app.post("/api/broadcasts", broadcastLimiter, async (req, res) => {
   try {
-    const { accountId, templateId, contactIds } = req.body;
-    if (!accountId || !templateId || !Array.isArray(contactIds)) {
-      return res.status(400).json({ error: "Invalid input payload" });
+    const { templateId, contactIds, variableValues = {}, campaignName } = req.body;
+
+    // ── Input validation ───────────────────────────────────────────
+    if (!templateId || !Array.isArray(contactIds) || contactIds.length === 0) {
+      return res.status(400).json({ error: "templateId and a non-empty contactIds array are required." });
     }
 
-    const account = await prisma.account.findUnique({
-      where: { id: accountId },
+    // ── Load all active accounts ───────────────────────────────────
+    const activeAccounts = await prisma.account.findMany({
+      where: { isActive: true, isArchived: false },
     });
-    const template = await prisma.template.findUnique({
-      where: { id: templateId },
-    });
-    
-    if (!account || !template) {
-      return res.status(400).json({ error: "Account or Template not found" });
+    if (activeAccounts.length === 0) {
+      return res.status(400).json({ error: "No active accounts found. Enable at least one account before broadcasting." });
     }
 
-    // 1. Create Broadcast record
+    const template = await prisma.template.findUnique({ where: { id: templateId } });
+    if (!template) return res.status(400).json({ error: "Template not found." });
+    if (template.status !== "approved") {
+      return res.status(400).json({ error: "Only approved templates can be broadcast." });
+    }
+
+    // ── Inject tier limits from DB / Meta health data ──────────────
+    // We use the stored qualityRating to infer tier — real tier data is on AccountHealth page.
+    // accounts need a tierLimit property for the engine; we default to TIER_1K if unknown.
+    const accountsWithTier = activeAccounts.map((acc) => ({
+      ...acc,
+      // Use stored tier from account model if present, else conservative default
+      tierLimit: TIER_LIMITS[acc.messagingLimitTier] ?? TIER_LIMITS["TIER_1K"],
+    }));
+
+    // ── Validate total capacity before creating any DB records ─────
+    const totalCapacity = accountsWithTier.reduce(
+      (sum, a) => (a.tierLimit === Infinity ? Infinity : sum + a.tierLimit),
+      0
+    );
+    if (totalCapacity !== Infinity && contactIds.length > totalCapacity) {
+      return res.status(400).json({
+        error: `Contact count (${contactIds.length}) exceeds combined tier limit (${totalCapacity}). Reduce recipients or upgrade account tiers.`,
+        combinedLimit: totalCapacity,
+      });
+    }
+
+    // ── Create the Broadcast record (use first account as primary for FK) ──
     const broadcast = await prisma.broadcast.create({
       data: {
-        accountId,
+        accountId: activeAccounts[0].id,
         templateId,
         contactIds,
         status: BROADCAST_STATUS.SENDING,
+        results: { campaignName: campaignName || null },
       },
       include: { account: true, template: true },
     });
 
-    // 2. Fetch contacts
-    const contacts = await prisma.contact.findMany({
-      where: { id: { in: contactIds } },
-    });
-
-    // 3. Log the start of the broadcast
     await logAction("BROADCAST_START", "Broadcast", broadcast.id, {
-      contactCount: contacts.length,
+      contactCount: contactIds.length,
       templateName: template.name,
+      accountCount: activeAccounts.length,
+      campaignName,
     });
 
-    // 4. Process each contact (Asynchronously in background for demo)
-    // In a real app, this would be a worker/queue job
-    const processBroadcast = async () => {
-      let successCount = 0;
-      let failureCount = 0;
+    // Respond immediately — engine runs in background
+    res.json({ ...broadcast, account: sanitizeAccount(broadcast.account) });
 
-      for (const contact of contacts) {
-        const messageLog = await prisma.messageLog.create({
+    // ── Run broadcast engine in background ────────────────────────
+    runBroadcast({
+      broadcastId: broadcast.id,
+      accounts: accountsWithTier,
+      contactIds,
+      template,
+      variableValues,
+
+      // ── metaSender: the ONLY function that hits real Meta API ────
+      // Swap this function with a mock in tests — zero other changes needed.
+      metaSender: async (account, contact, tpl, vars) => {
+        const components = [];
+
+        if (tpl.headerType !== "TEXT" && tpl.mediaUrl) {
+          components.push({
+            type: "header",
+            parameters: [{ type: tpl.headerType.toLowerCase(), [tpl.headerType.toLowerCase()]: { link: tpl.mediaUrl } }],
+          });
+        }
+
+        const resolvedVariables = Array.isArray(tpl.variables) ? tpl.variables : [];
+        if (resolvedVariables.length > 0) {
+          components.push({
+            type: "body",
+            parameters: resolvedVariables
+              .sort((a, b) => Number(a.num) - Number(b.num))
+              .map((v) => ({ type: "text", text: vars[String(v.num)] || v.sample || "sample" })),
+          });
+        }
+
+        const response = await fetchWithTimeout(
+          `${META_API_BASE_URL}/${META_API_VERSION}/${account.phoneNumberId}/messages`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${account.accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: contact.phone,
+              type: "template",
+              template: {
+                name: tpl.name,
+                language: { code: tpl.language || DEFAULT_TEMPLATE_LANGUAGE },
+                components: components.length > 0 ? components : undefined,
+              },
+            }),
+          }
+        );
+
+        const metaData = await response.json();
+        if (!response.ok || metaData.error) {
+          const err = new Error(metaData.error?.message || "Meta API Error");
+          err.statusCode = response.status;
+          err.retryable = response.status === 429 || response.status >= 500;
+          throw err;
+        }
+        return metaData.messages?.[0]?.id;
+      },
+
+      getContact: (contactId) => prisma.contact.findUnique({ where: { id: contactId } }),
+
+      onMessageQueued: async (contactId) => {
+        const log = await prisma.messageLog.create({
+          data: { broadcastId: broadcast.id, contactId, status: "queued" },
+        });
+        return log.id;
+      },
+
+      onMessageSuccess: async (messageLogId, metaMessageId, contactId, tpl, vars) => {
+        await prisma.messageLog.update({
+          where: { id: messageLogId },
+          data: { status: "sent", metaMessageId, sentAt: new Date() },
+        });
+        // Resolve variable placeholders with user-supplied values
+        const resolvedBody = (tpl.body || "").replace(/\{\{(\d+)\}\}/g, (match, num) => {
+          return vars[num] ?? (Array.isArray(tpl.variables) ? (tpl.variables.find(v => String(v.num) === num)?.sample ?? match) : match);
+        });
+        await prisma.chatMessage.create({
           data: {
-            broadcastId: broadcast.id,
-            contactId: contact.id,
-            status: "queued",
+            contactId,
+            fromMe: true,
+            type: "template_broadcast",
+            body: resolvedBody,
+            mediaUrl: tpl.mediaUrl,
+            metaMessageId,
           },
         });
+        await prisma.contact.update({
+          where: { id: contactId },
+          data: { lastBroadcastAt: new Date(), lastMessageAt: new Date() },
+        });
+        io.emit("broadcast_progress", { broadcastId: broadcast.id });
+      },
 
-        try {
-          const components = [];
-          if (template.headerType !== "TEXT" && template.mediaUrl) {
-            components.push({
-              type: "header",
-              parameters: [
-                {
-                  type: template.headerType.toLowerCase(),
-                  [template.headerType.toLowerCase()]: { link: template.mediaUrl },
-                },
-              ],
-            });
-          }
+      onMessageFailure: async (messageLogId, err, contactId) => {
+        console.error(`[Broadcast ${broadcast.id}] Failed for contact ${contactId}: ${err.message}`);
+        await prisma.messageLog.update({
+          where: { id: messageLogId },
+          data: { status: "failed", error: err.message },
+        });
+      },
 
-          if (template.variables?.length > 0) {
-            components.push({
-              type: "body",
-              parameters: template.variables
-                .sort((a, b) => Number(a.num) - Number(b.num))
-                .map((v) => ({ type: "text", text: v.sample || "sample" })),
-            });
-          }
+      onBroadcastComplete: async (broadcastId, totals) => {
+        await prisma.broadcast.update({
+          where: { id: broadcastId },
+          data: {
+            status: totals.failed === 0 ? BROADCAST_STATUS.SENT : "completed_with_errors",
+            results: { ...totals, campaignName: campaignName || null },
+          },
+        });
+        const finalBroadcast = await prisma.broadcast.findUnique({
+          where: { id: broadcastId },
+          include: { account: true, template: true },
+        });
+        io.emit("broadcast_update", { ...finalBroadcast, account: sanitizeAccount(finalBroadcast.account) });
+      },
 
-          const response = await fetch(
-            `${META_API_BASE_URL}/${META_API_VERSION}/${account.phoneNumberId}/messages`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${account.accessToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                messaging_product: "whatsapp",
-                to: contact.phone,
-                type: "template",
-                template: {
-                  name: template.name,
-                  language: {
-                    code: template.language || DEFAULT_TEMPLATE_LANGUAGE,
-                  },
-                  components: components.length > 0 ? components : undefined,
-                },
-              }),
-            }
-          );
+      onAuditLog: (action, metadata) => logAction(action, "Broadcast", broadcast.id, metadata),
 
-          const metaData = await response.json();
+      onProgress: ({ done, total, accountId }) => {
+        io.emit("broadcast_progress", {
+          broadcastId: broadcast.id,
+          progress: Math.round((done / total) * 100),
+          current: done,
+          total,
+          accountId,
+        });
+      },
+    }).catch((err) => {
+      console.error(`[Broadcast ${broadcast.id}] Engine failed:`, err.message);
+      // Update broadcast status to failed if engine itself crashes
+      prisma.broadcast
+        .update({ where: { id: broadcast.id }, data: { status: "failed", results: { error: err.message } } })
+        .catch(() => {});
+    });
 
-          if (!response.ok || metaData.error) {
-            throw new Error(metaData.error?.message || "Meta API Error");
-          }
-
-          // Update MessageLog on success
-          await prisma.messageLog.update({
-            where: { id: messageLog.id },
-            data: {
-              status: "sent",
-              metaMessageId: metaData.messages?.[0]?.id,
-              sentAt: new Date(),
-            },
-          });
-
-          // Also record in ChatMessage for unified history
-          await prisma.chatMessage.create({
-            data: {
-              contactId: contact.id,
-              fromMe: true,
-              type: "template_broadcast",
-              body: `Broadcast Template: ${template.name}`,
-              metaMessageId: metaData.messages?.[0]?.id,
-            },
-          });
-
-          // Update Contact Analytics
-          await prisma.contact.update({
-            where: { id: contact.id },
-            data: { 
-              lastBroadcastAt: new Date(),
-              lastMessageAt: new Date(),
-            },
-          });
-
-          successCount++;
-        } catch (error) {
-          console.error(`Broadcast error for ${contact.phone}:`, error.message);
-          await prisma.messageLog.update({
-            where: { id: messageLog.id },
-            data: {
-              status: "failed",
-              error: error.message,
-            },
-          });
-          failureCount++;
-        }
-      }
-
-      // Finalize Broadcast record
-      await prisma.broadcast.update({
-        where: { id: broadcast.id },
-        data: {
-          status: failureCount === 0 ? BROADCAST_STATUS.SENT : "completed_with_errors",
-          results: { success: successCount, failure: failureCount },
-        },
-      });
-
-      await logAction("BROADCAST_COMPLETE", "Broadcast", broadcast.id, {
-        success: successCount,
-        failure: failureCount,
-      });
-    };
-
-    // Run in background
-    processBroadcast().catch(err => console.error("Background broadcast failed:", err));
-
-    res.json(broadcast);
   } catch (error) {
     console.error("Broadcast initiation failed:", error);
     res.status(500).json({ error: "Broadcast initiation failed" });
   }
 });
+
 
 // Inbox API
 // ============================================
@@ -1155,10 +1506,11 @@ app.get("/api/inbox/:contactId", async (req, res) => {
   }
 });
 
-app.post("/api/inbox/:contactId/send", async (req, res) => {
+app.post("/api/inbox/:contactId/send", upload.single("file"), async (req, res) => {
   try {
     const { contactId } = req.params;
-    const { text, accountId } = req.body;
+    const { text, accountId, type = "text" } = req.body;
+    const file = req.file;
 
     const contact = await prisma.contact.findUnique({ where: { id: contactId } });
     const account = await prisma.account.findUnique({ where: { id: accountId } });
@@ -1177,8 +1529,47 @@ app.post("/api/inbox/:contactId/send", async (req, res) => {
       });
     }
 
+    let metaPayload = {
+      messaging_product: "whatsapp",
+      to: contact.phone,
+    };
+
+    let mediaUrl = null;
+    let messageType = type;
+    let metaMediaId = null;
+
+    if (file) {
+      const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${file.filename}`;
+      mediaUrl = fileUrl;
+      
+      // Determine Meta message type
+      if (file.mimetype.startsWith("image/")) messageType = "image";
+      else if (file.mimetype.startsWith("video/")) messageType = "video";
+      else if (file.mimetype.startsWith("audio/")) messageType = "audio";
+      else messageType = "document";
+
+      // PREFERRED: Upload to Meta to get an ID (works for localhost/non-public files)
+      try {
+        console.log(`📤 Uploading message media to Meta for ${contact.phone}...`);
+        metaMediaId = await uploadMessageMediaToMeta(file, account.accessToken, account.phoneNumberId);
+        
+        metaPayload.type = messageType;
+        metaPayload[messageType] = { id: metaMediaId };
+      } catch (uploadErr) {
+        console.warn("⚠️ Meta Upload failed, falling back to link (requires public URL):", uploadErr.message);
+        metaPayload.type = messageType;
+        metaPayload[messageType] = { link: fileUrl };
+      }
+
+      if (messageType === "document") metaPayload.document.filename = file.originalname;
+      if (text && messageType !== "audio") metaPayload[messageType].caption = text;
+    } else {
+      metaPayload.type = "text";
+      metaPayload.text = { body: text };
+    }
+
     // Send via Meta API
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${META_API_BASE_URL}/${META_API_VERSION}/${account.phoneNumberId}/messages`,
       {
         method: "POST",
@@ -1186,12 +1577,7 @@ app.post("/api/inbox/:contactId/send", async (req, res) => {
           Authorization: `Bearer ${account.accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: contact.phone,
-          type: "text",
-          text: { body: text },
-        }),
+        body: JSON.stringify(metaPayload),
       }
     );
 
@@ -1203,8 +1589,9 @@ app.post("/api/inbox/:contactId/send", async (req, res) => {
       data: {
         contactId,
         fromMe: true,
-        type: "text",
-        body: text,
+        type: messageType,
+        body: text || (file ? `[${messageType.toUpperCase()}]` : ""),
+        mediaUrl: mediaUrl,
         metaMessageId: metaData.messages?.[0]?.id,
       },
     });
@@ -1214,8 +1601,15 @@ app.post("/api/inbox/:contactId/send", async (req, res) => {
       data: { lastMessageAt: new Date() },
     });
 
+    // Notify UI via WebSocket
+    io.emit("new_message", {
+      message,
+      contact: contact // Minimal update
+    });
+
     res.json(message);
   } catch (error) {
+    console.error("Send message error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1263,69 +1657,120 @@ app.post("/api/webhook-settings", async (req, res) => {
       settings = await prisma.webhookSetting.create({ data });
     }
 
-    // Automated Meta API Sync
-    let metaStatus = "synchronized";
-    let metaError = null;
-    
-    try {
-      const appId = process.env.META_APP_ID;
-      const appSecret = process.env.META_APP_SECRET;
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-      if (appId && appSecret && url) {
-        console.log("🚀 Starting automated Meta webhook synchronization...");
-        
-        // 1. Set App Webhook URL
-        const appAccessToken = `${appId}|${appSecret}`;
-        const subRes = await fetch(`${META_API_BASE_URL}/${META_API_VERSION}/${appId}/subscriptions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${appAccessToken}`,
-          },
-          body: JSON.stringify({
-            object: "whatsapp_business_account",
-            callback_url: url,
-            verify_token: verifyToken,
-            fields: ["messages", "message_echoes", "message_deliveries", "message_reads", "template_status"],
-            include_values: true
-          }),
-        });
-        
-        const subData = await subRes.json();
-        if (subData.error) throw new Error(`App Sub Error: ${subData.error.message}`);
-        console.log("✅ App Webhook URL configured at Meta");
+app.post("/api/webhook-settings/meta-sync", async (req, res) => {
+  try {
+    const settings = await prisma.webhookSetting.findFirst();
+    const url = settings?.url;
+    const verifyToken = settings?.verifyToken;
+    const appId = process.env.META_APP_ID;
+    const appSecret = process.env.META_APP_SECRET;
 
-        // 2. Subscribe active WABAs to this app
-        const activeAccounts = await prisma.account.findMany({
-          where: { isActive: true, isArchived: false }
-        });
-
-        for (const acc of activeAccounts) {
-          if (acc.wabaId && acc.accessToken) {
-            const wabaSubRes = await fetch(`${META_API_BASE_URL}/${META_API_VERSION}/${acc.wabaId}/subscribed_apps`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${acc.accessToken}` },
-            });
-            const wabaSubData = await wabaSubRes.json();
-            if (wabaSubData.error) {
-              console.warn(`⚠️ Failed to subscribe WABA ${acc.wabaId}:`, wabaSubData.error.message);
-            } else {
-              console.log(`✅ WABA ${acc.wabaId} subscribed to app`);
-            }
-          }
-        }
-      } else {
-        metaStatus = "manual_setup_required";
-        if (!appId || !appSecret) metaError = "Missing META_APP_ID or META_APP_SECRET in .env";
-      }
-    } catch (e) { 
-      console.error("❌ Meta Sync Failed:", e.message);
-      metaStatus = "sync_failed";
-      metaError = e.message;
+    if (!appId || !appSecret || !url) {
+      return res.status(400).json({ error: "Configuration missing. Check .env and Webhook URL." });
     }
 
-    res.json({ ...settings, metaStatus, metaError });
+    io.emit("sync_status", { status: "processing", message: "Contacting Meta Cloud API..." });
+
+    const appAccessToken = `${appId}|${appSecret}`;
+    const systemToken = process.env.META_ACCESS_TOKEN || appAccessToken;
+
+    io.emit("sync_status", { status: "processing", message: "Configuring App Webhook URL..." });
+
+    // 1. Configure App Webhook (Requires App Token or System User Token)
+    // Intelligent Fallback Logic
+    const professionalFields = ["messages", "message_echoes", "message_deliveries", "message_reads", "template_status"];
+    const minimalFields = ["messages", "template_status"];
+    
+    let subscriptionSuccess = false;
+    let subscriptionData = null;
+
+    // Try Professional Tier first
+    const professionalUrl = `${META_API_BASE_URL}/${META_API_VERSION}/${appId}/subscriptions?access_token=${systemToken}`;
+    const professionalRes = await fetchWithTimeout(professionalUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        object: "whatsapp_business_account",
+        callback_url: url,
+        verify_token: verifyToken,
+        fields: professionalFields,
+        include_values: true
+      }),
+    });
+
+    subscriptionData = await professionalRes.json();
+    
+    if (professionalRes.ok) {
+      subscriptionSuccess = true;
+      console.log("✅ Subscribed to Professional Tier fields");
+    } else {
+      console.warn("⚠️ Professional Tier failed, falling back to Minimal Tier...", subscriptionData.error?.message);
+      io.emit("sync_status", { status: "processing", message: "Retrying with Compatibility Mode..." });
+      
+      const minimalRes = await fetchWithTimeout(professionalUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          object: "whatsapp_business_account",
+          callback_url: url,
+          verify_token: verifyToken,
+          fields: minimalFields,
+          include_values: true
+        }),
+      });
+
+      subscriptionData = await minimalRes.json();
+      if (minimalRes.ok) {
+        subscriptionSuccess = true;
+        console.log("✅ Subscribed to Minimal Tier fields");
+      }
+    }
+    
+    if (!subscriptionSuccess) {
+      console.error("❌ Meta App Subscription Failed. Full Response:", JSON.stringify(subscriptionData, null, 2));
+      io.emit("sync_status", { status: "error", message: subscriptionData.error?.message || "App subscription failed" });
+      throw new Error(`Meta App Subscription Failed: ${subscriptionData.error?.message || "Unknown Error"}`);
+    }
+
+    io.emit("sync_status", { status: "processing", message: "Subscribing active accounts..." });
+
+    // 2. Subscribe active WABAs (Requires Account Tokens)
+    const activeAccounts = await prisma.account.findMany({
+      where: { isActive: true, isArchived: false }
+    });
+
+    for (const acc of activeAccounts) {
+      if (acc.wabaId && acc.accessToken) {
+        await fetch(`${META_API_BASE_URL}/${META_API_VERSION}/${acc.wabaId}/subscribed_apps`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${acc.accessToken}` },
+        });
+      }
+    }
+
+    await prisma.webhookSetting.update({
+      where: { id: settings.id },
+      data: { lastSyncAt: new Date(), metaStatus: "synchronized", metaError: null }
+    });
+
+    io.emit("sync_status", { status: "success", message: "All systems synchronized with Meta." });
+    res.json({ success: true, message: "Synchronized with Meta Cloud API." });
   } catch (error) {
+    io.emit("sync_status", { status: "error", message: error.message });
+    console.error("Meta Sync Error:", error.message);
+    const settings = await prisma.webhookSetting.findFirst();
+    if (settings) {
+      await prisma.webhookSetting.update({
+        where: { id: settings.id },
+        data: { metaStatus: "sync_failed", metaError: error.message }
+      });
+    }
     res.status(500).json({ error: error.message });
   }
 });
@@ -1341,7 +1786,7 @@ app.post("/api/webhook-settings/test", async (req, res) => {
 
     console.log(`Testing webhook: ${testUrl}`);
     
-    const response = await fetch(testUrl, { timeout: 5000 });
+    const response = await fetchWithTimeout(testUrl, {}, 5000);
     const result = await response.text();
 
     if (response.ok && result === challenge) {
@@ -1389,18 +1834,42 @@ app.post("/api/webhooks", async (req, res) => {
   try {
     const { body } = req;
 
-    // Check signature if it's a production request
-    if (process.env.NODE_ENV === "production" && req.isMetaVerified === false) {
-      console.warn("Invalid webhook signature rejected");
+    // Reject if production and signature is missing or invalid
+    if (IS_PRODUCTION && req.isMetaVerified === false) {
+      console.warn(`[Webhook] Rejected invalid signature from IP: ${req.ip}`);
       return res.status(401).send("Invalid signature");
     }
 
     if (body.object === "whatsapp_business_account") {
       for (const entry of body.entry) {
         for (const change of entry.changes) {
-          const { value } = change;
+          const { value, field } = change;
 
-          // 1. Handle Status Updates (sent, delivered, read, failed)
+          // 1. Handle Account Quality Updates
+          if (field === "phone_number_quality_update") {
+            const displayPhone = value.display_phone_number;
+            const event = value.event; // e.g. FLAGGED, UNFLAGGED, etc. (Or GREEN, YELLOW, RED if provided)
+            
+            // Meta typically sends the actual quality rating in event or quality property depending on the payload.
+            // Some payloads: { event: "FLAGGED", current_limit: "TIER_10K" } or { quality: "RED" }
+            const newQuality = value.current_limit ? value.event : (value.quality || "UNKNOWN");
+            
+            if (displayPhone) {
+              const account = await prisma.account.findFirst({
+                where: { displayPhoneNumber: displayPhone }
+              });
+              if (account) {
+                const updatedAccount = await prisma.account.update({
+                  where: { id: account.id },
+                  data: { qualityRating: newQuality }
+                });
+                await logAction("ACCOUNT_QUALITY_UPDATE", "Account", account.id, { newQuality, rawValue: value });
+                io.emit("account_health_updated", { accountId: account.id, qualityRating: newQuality, event });
+              }
+            }
+          }
+
+          // 2. Handle Status Updates (sent, delivered, read, failed)
           if (value.statuses) {
             for (const statusObj of value.statuses) {
               const { id: metaId, status, recipient_id } = statusObj;
@@ -1440,9 +1909,11 @@ app.post("/api/webhooks", async (req, res) => {
           // 2. Handle Incoming Messages
           if (value.messages) {
             for (const msg of value.messages) {
-              const { from: phone, type, text, image, id: metaId } = msg;
+              const { type, text, image, id: metaId } = msg;
 
-              // Find contact by phone
+              // Find contact by phone (normalize first)
+              const phone = normalizePhone(msg.from);
+              
               let contact = await prisma.contact.findUnique({
                 where: { phone },
               });
@@ -1477,13 +1948,40 @@ app.post("/api/webhooks", async (req, res) => {
                 },
               });
 
-              // Update contact unread count and activity
+              // Auto opt-out / opt-in detection
+              const lowerBody = bodyText.toLowerCase().trim();
+              const stopKeywords = ["stop", "unsubscribe", "quit", "cancel", "opt out", "stop receiving"];
+              const startKeywords = ["start", "yes", "opt in", "subscribe"];
+              
+              let optInUpdates = {};
+              if (stopKeywords.includes(lowerBody)) {
+                optInUpdates = {
+                  optInStatus: "opted_out",
+                  optOutReason: "keyword_reply",
+                  optOutTimestamp: new Date()
+                };
+                io.emit("contact_opted_out", { contactId: contact.id, phone });
+                await logAction("OPT_OUT_AUTO", "Contact", contact.id, { reason: "keyword_reply" });
+              } else if (startKeywords.includes(lowerBody)) {
+                optInUpdates = {
+                  optInStatus: "opted_in",
+                  optInMethod: "keyword_reply",
+                  optInTimestamp: new Date(),
+                  optOutTimestamp: null,
+                  optOutReason: null
+                };
+                io.emit("contact_opted_in", { contactId: contact.id, phone });
+                await logAction("OPT_IN_AUTO", "Contact", contact.id, { method: "keyword_reply" });
+              }
+
+              // Update contact unread count, activity, and opt-in status
               const updatedContact = await prisma.contact.update({
                 where: { id: contact.id },
                 data: {
                   unreadCount: { increment: 1 },
                   lastMessageAt: new Date(),
                   lastReplyAt: new Date(),
+                  ...optInUpdates
                 },
               });
 

@@ -1,45 +1,48 @@
 /**
  * AccountsContext — manages WhatsApp account connections.
+ *
+ * Multi-account design:
+ *  - Multiple accounts can be `isActive: true` simultaneously.
+ *  - `activeAccounts` is the array of all active accounts.
+ *  - `primaryAccount` is the first active account (backward compat).
+ *  - `activeAccountId` is kept for any legacy callers but derived from primary.
+ *  - Toggling an account enables it if inactive, disables it if active.
  */
 import React, { createContext, useContext, useReducer, useEffect } from 'react'
 
 const AccountsContext = createContext(null)
-const API_URL = 'http://localhost:3001/api/accounts'
+const API_BASE = 'http://localhost:3001/api/accounts'
 
 const INITIAL_STATE = {
   accounts: [],
-  activeAccountId: localStorage.getItem('wa_crm_active_account') || null,
+  loading: true,
 }
 
 function reducer(state, action) {
   switch (action.type) {
     case 'SET_ACCOUNTS':
-      return { ...state, accounts: action.payload }
-    case 'ADD_ACCOUNT': {
-      const accounts = [...state.accounts, action.payload]
-      const activeAccountId = state.activeAccountId ?? action.payload.id
-      localStorage.setItem('wa_crm_active_account', activeAccountId)
-      return { ...state, accounts, activeAccountId }
-    }
-    case 'UPDATE_ACCOUNT': {
-      const accounts = state.accounts.map((a) =>
-        a.id === action.payload.id ? { ...a, ...action.payload } : a
-      )
-      return { ...state, accounts }
-    }
-    case 'DELETE_ACCOUNT': {
-      const accounts = state.accounts.filter((a) => a.id !== action.payload.id)
-      const activeAccountId =
-        state.activeAccountId === action.payload.id
-          ? accounts[0]?.id ?? null
-          : state.activeAccountId
-      if (activeAccountId) localStorage.setItem('wa_crm_active_account', activeAccountId)
-      else localStorage.removeItem('wa_crm_active_account')
-      return { ...state, accounts, activeAccountId }
-    }
-    case 'SET_ACTIVE_ACCOUNT':
-      localStorage.setItem('wa_crm_active_account', action.payload.id)
-      return { ...state, activeAccountId: action.payload.id }
+      return { ...state, accounts: action.payload, loading: false }
+
+    case 'ADD_ACCOUNT':
+      return {
+        ...state,
+        accounts: [...state.accounts, action.payload],
+      }
+
+    case 'UPDATE_ACCOUNT':
+      return {
+        ...state,
+        accounts: state.accounts.map((a) =>
+          a.id === action.payload.id ? { ...a, ...action.payload } : a
+        ),
+      }
+
+    case 'DELETE_ACCOUNT':
+      return {
+        ...state,
+        accounts: state.accounts.filter((a) => a.id !== action.payload),
+      }
+
     default:
       return state
   }
@@ -49,10 +52,13 @@ export function AccountsProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
 
   useEffect(() => {
-    fetch(API_URL)
-      .then(res => res.json())
-      .then(data => dispatch({ type: 'SET_ACCOUNTS', payload: data }))
-      .catch(err => console.error('Failed to fetch accounts', err))
+    fetch(API_BASE)
+      .then((res) => res.json())
+      .then((data) => dispatch({ type: 'SET_ACCOUNTS', payload: Array.isArray(data) ? data : [] }))
+      .catch((err) => {
+        console.error('Failed to fetch accounts:', err)
+        dispatch({ type: 'SET_ACCOUNTS', payload: [] })
+      })
   }, [])
 
   return (
@@ -67,45 +73,77 @@ export function useAccounts() {
   if (!ctx) throw new Error('useAccounts must be inside AccountsProvider')
   const { state, dispatch } = ctx
 
+  // Derived: all currently active accounts
+  const activeAccounts = state.accounts.filter((a) => a.isActive && !a.isArchived)
+
+  // Derived: first active account (backward compat for any single-account callers)
+  const primaryAccount = activeAccounts[0] ?? null
+
   return {
     accounts: state.accounts,
-    activeAccountId: state.activeAccountId,
-    activeAccount: state.accounts.find((a) => a.id === state.activeAccountId) ?? null,
-    
-    // addAccount accepts an already-saved account object (e.g. from MetaDiscoveryModal)
-    // and adds it to local state without another API call.
+    activeAccounts,
+    primaryAccount,
+
+    // Legacy compat — derived from primary, not from localStorage
+    activeAccountId: primaryAccount?.id ?? null,
+    activeAccount: primaryAccount,
+
+    loading: state.loading,
+
     addAccount: (savedAccount) => {
       dispatch({ type: 'ADD_ACCOUNT', payload: savedAccount })
     },
-    
-    updateAccount: async (payload) => {
+
+    updateAccount: (updatedAccount) => {
+      dispatch({ type: 'UPDATE_ACCOUNT', payload: updatedAccount })
+    },
+
+    /**
+     * Toggles an account's isActive state by calling the appropriate backend endpoint.
+     * Multiple accounts can be active simultaneously.
+     */
+    toggleAccount: async (account) => {
+      const endpoint = account.isActive
+        ? `${API_BASE}/${account.id}/disable`
+        : `${API_BASE}/${account.id}/enable`
       try {
-        const res = await fetch(`${API_URL}/${payload.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
+        const res = await fetch(endpoint, { method: 'PUT' })
+        if (!res.ok) throw new Error('Toggle failed')
+        const data = await res.json()
+        dispatch({ type: 'UPDATE_ACCOUNT', payload: data })
+        return data
+      } catch (err) {
+        console.error('toggleAccount error:', err)
+        throw err
+      }
+    },
+
+    deleteAccount: async (id) => {
+      try {
+        const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || 'Failed to delete account')
+        }
+        dispatch({ type: 'DELETE_ACCOUNT', payload: id })
+      } catch (err) {
+        console.error('deleteAccount error:', err)
+        throw err
+      }
+    },
+
+    // Legacy compat — calls enable on the given ID, used by old code
+    setActiveAccount: async (id) => {
+      const account = state.accounts.find((a) => a.id === id)
+      if (!account) return
+      try {
+        const res = await fetch(`${API_BASE}/${id}/enable`, { method: 'PUT' })
+        if (!res.ok) throw new Error('Enable failed')
         const data = await res.json()
         dispatch({ type: 'UPDATE_ACCOUNT', payload: data })
       } catch (err) {
-        console.error(err)
+        console.error('setActiveAccount error:', err)
       }
     },
-    
-    deleteAccount: async (id) => {
-      try {
-        const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE' })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || 'Failed to delete account');
-        }
-        dispatch({ type: 'DELETE_ACCOUNT', payload: { id } })
-      } catch (err) {
-        console.error(err)
-        alert(err.message)
-      }
-    },
-    
-    setActiveAccount: (id) => dispatch({ type: 'SET_ACTIVE_ACCOUNT', payload: { id } }),
   }
 }

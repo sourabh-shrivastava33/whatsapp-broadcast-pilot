@@ -57,3 +57,10 @@ test.md
 /walkthrough.md
 /implementation_plan.md
 /task.md
+
+# Scratch and Temporary Files
+/server/cleanup_*.js
+/server/login_account.js
+/server/scratch/
+/server/test.js
+/server/uploads/

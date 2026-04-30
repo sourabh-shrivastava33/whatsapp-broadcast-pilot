@@ -1,6 +1,6 @@
 /* Size override only — position/centering handled by shared .modal class */
 .meta-discovery-modal {
-  max-width: 640px;
+  max-width: 800px;
   width: 90vw;
   max-height: 85vh;
   display: flex;
@@ -86,7 +86,7 @@
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: var(--radius-md);
-  color: #f87171;
+  color: var(--status-rejected);
   font-size: var(--font-size-sm);
 }
 
@@ -249,5 +249,5 @@
   border-radius: var(--radius-sm);
 }
 
-.import-result-row.success { background: rgba(34,197,94,0.08); color: #22c55e; }
-.import-result-row.fail    { background: rgba(239,68,68,0.08);  color: #ef4444; }
+.import-result-row.success { background: rgba(34,197,94,0.08); color: var(--accent); }
+.import-result-row.fail    { background: rgba(239,68,68,0.08);  color: var(--status-rejected); }

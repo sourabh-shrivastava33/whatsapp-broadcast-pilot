@@ -13,9 +13,12 @@ import {
   Server
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
+import { useToast } from '../store/ToastContext'
+import { socket } from '../lib/socket'
 import './Webhooks.css'
 
 export default function Webhooks() {
+  const { toast } = useToast()
   const [settings, setSettings] = useState({
     url: '',
     verifyToken: '',
@@ -35,6 +38,19 @@ export default function Webhooks() {
         setSettings(data)
         setLoading(false)
       })
+
+    const handleSyncUpdate = (data) => {
+      if (data.status === 'processing') {
+        toast({ type: 'info', message: data.message, duration: 2000 });
+      } else if (data.status === 'success') {
+        toast({ type: 'success', title: 'Meta Sync', message: data.message });
+      } else if (data.status === 'error') {
+        toast({ type: 'error', title: 'Sync Error', message: data.message });
+      }
+    };
+
+    socket.on('sync_status', handleSyncUpdate);
+    return () => socket.off('sync_status', handleSyncUpdate);
   }, [])
 
   const handleSave = async () => {
@@ -47,9 +63,17 @@ export default function Webhooks() {
       })
       const data = await res.json()
       setSettings(data)
-      alert('Settings saved successfully!')
+      toast({
+        type: 'success',
+        title: 'Settings Saved',
+        message: 'Your webhook configuration has been updated locally.'
+      })
     } catch (err) {
-      alert('Failed to save settings')
+      toast({
+        type: 'error',
+        title: 'Save Failed',
+        message: 'Could not save webhook settings.'
+      })
     } finally {
       setSaving(false)
     }
@@ -58,6 +82,7 @@ export default function Webhooks() {
   const handleTest = async () => {
     setTesting(true)
     setTestResult(null)
+    toast({ type: 'loading', message: 'Testing connection...' })
     try {
       const res = await fetch('http://localhost:3001/api/webhook-settings/test', {
         method: 'POST',
@@ -68,11 +93,14 @@ export default function Webhooks() {
       setTestResult(data)
       if (data.success) {
         setSettings(prev => ({ ...prev, healthStatus: 'healthy' }))
+        toast({ type: 'success', title: 'Healthy', message: 'Webhook verified!' })
       } else {
         setSettings(prev => ({ ...prev, healthStatus: 'failing' }))
+        toast({ type: 'error', title: 'Failing', message: data.message })
       }
     } catch (err) {
       setTestResult({ success: false, message: err.message })
+      toast({ type: 'error', title: 'Test Error', message: err.message })
     } finally {
       setTesting(false)
     }
@@ -136,17 +164,33 @@ export default function Webhooks() {
         {testResult && (
           <div className={`alert ${testResult.success ? 'alert-success' : 'alert-error'}`}>
             {testResult.success ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-            <span>{testResult.message}</span>
+            <div className="alert-content">
+              <span className="alert-title">{testResult.success ? 'Connection Healthy' : 'Connection Failed'}</span>
+              <span>{testResult.message}</span>
+            </div>
           </div>
         )}
 
         {settings.metaError && (
-          <div className="alert alert-error" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--status-rejected)' }}>
-            <AlertCircle size={18} />
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <strong>Meta Automation Error</strong>
-              <span style={{ fontSize: '12px' }}>{settings.metaError}</span>
+          <div className="meta-error-card">
+            <div className="meta-error-icon">
+              <AlertCircle size={24} />
             </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span className="alert-title">Meta Automation Failure</span>
+                <span className="meta-status-badge status-failed">Sync Failed</span>
+              </div>
+              <span style={{ fontSize: '12px', opacity: 0.8 }}>{settings.metaError}</span>
+            </div>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => handleTest()}
+              style={{ borderColor: 'rgba(218, 54, 51, 0.3)' }}
+            >
+              Retry
+            </Button>
           </div>
         )}
 
@@ -209,14 +253,42 @@ export default function Webhooks() {
             </div>
           </div>
 
-          <div style={{ marginTop: 'var(--space-xl)', borderTop: '1px solid var(--border-subtle)', paddingTop: 'var(--space-lg)', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: 'var(--space-xl)', borderTop: '1px solid var(--border-subtle)', paddingTop: 'var(--space-lg)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)' }}>
+            <Button 
+              variant="outline" 
+              onClick={async () => {
+                setSaving(true);
+                const tId = toast({ type: 'loading', message: 'Synchronizing with Meta...' });
+                try {
+                  const res = await fetch('http://localhost:3001/api/webhook-settings/meta-sync', { method: 'POST' });
+                  const data = await res.json();
+                  if (data.success) {
+                    toast({ type: 'success', title: 'Meta Sync Complete', message: data.message });
+                  } else {
+                    throw new Error(data.error);
+                  }
+                  
+                  const sRes = await fetch('http://localhost:3001/api/webhook-settings');
+                  const sData = await sRes.json();
+                  setSettings(sData);
+                } catch (err) {
+                  toast({ type: 'error', title: 'Sync Failed', message: err.message });
+                } finally {
+                  setSaving(false);
+                }
+              }} 
+              disabled={saving || !settings.url}
+              icon={RefreshCcw}
+            >
+              Sync to Meta
+            </Button>
             <Button 
               variant="primary" 
               onClick={handleSave} 
               disabled={saving}
               icon={Zap}
             >
-              {saving ? 'Saving...' : 'Apply & Sync Settings'}
+              {saving ? 'Saving...' : 'Save Locally'}
             </Button>
           </div>
         </div>

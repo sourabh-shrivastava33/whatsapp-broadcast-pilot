@@ -31,7 +31,14 @@ export function BroadcastsProvider({ children }) {
   useEffect(() => {
     fetch(API_URL)
       .then(res => res.json())
-      .then(data => dispatch({ type: 'SET_BROADCASTS', payload: data }))
+      .then(data => {
+        if (Array.isArray(data)) {
+          dispatch({ type: 'SET_BROADCASTS', payload: data })
+        } else {
+          console.error('API did not return an array:', data)
+          dispatch({ type: 'SET_BROADCASTS', payload: [] })
+        }
+      })
       .catch(err => console.error('Failed to fetch broadcasts', err))
   }, [])
 

@@ -11,25 +11,32 @@ import {
   CheckCheck,
   Lock,
   Zap,
-  Clock
+  Clock,
+  RefreshCcw,
+  ChevronLeft
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { useAccounts } from '../store/AccountsContext'
+import { useToast } from '../store/ToastContext'
 import './Inbox.css'
 import { socket } from '../lib/socket'
 
 export default function Inbox() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const urlContactId = searchParams.get('contactId')
   
   const { accounts } = useAccounts()
+  const { toast } = useToast()
   const [conversations, setConversations] = useState([])
   const [selectedId, setSelectedId] = useState(urlContactId)
   const [chatData, setChatData] = useState({ messages: [], isWindowOpen: false })
   const [inputText, setInputText] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
-  const [filter, setFilter] = useState('all') // all | replied | broadcast
+  const [filter, setFilter] = useState('all') 
+  const [showChatOnMobile, setShowChatOnMobile] = useState(!!urlContactId)
   
   const messagesEndRef = useRef(null)
 
@@ -37,25 +44,23 @@ export default function Inbox() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
-  // Fetch conversation list
   const fetchInbox = async () => {
     try {
       const res = await fetch('http://localhost:3001/api/inbox')
       const data = await res.json()
-      setConversations(data)
+      const uniqueData = Array.from(new Map(data.map(item => [item.id, item])).values())
+      setConversations(uniqueData)
       setLoading(false)
     } catch (err) {
       console.error('Failed to fetch inbox', err)
     }
   }
 
-  // Fetch messages for selected contact
   const fetchMessages = async (contactId) => {
     try {
       const res = await fetch(`http://localhost:3001/api/inbox/${contactId}`)
       const data = await res.json()
       setChatData(data)
-      // Reset unread count locally
       setConversations(prev => prev.map(c => c.id === contactId ? { ...c, unreadCount: 0 } : c))
     } catch (err) {
       console.error('Failed to fetch messages', err)
@@ -72,30 +77,24 @@ export default function Inbox() {
     }
   }, [selectedId])
 
-  // Real-time listeners
   useEffect(() => {
     const handleNewMessage = (payload) => {
       const { message, contact: updatedContact } = payload;
-      
-      // Update conversation list
       setConversations(prev => {
-        const exists = prev.find(c => c.id === updatedContact.id);
-        if (exists) {
-          return [
-            { ...updatedContact, chatMessages: [message] },
-            ...prev.filter(c => c.id !== updatedContact.id)
-          ];
-        } else {
-          return [{ ...updatedContact, chatMessages: [message] }, ...prev];
-        }
+        const otherConversations = prev.filter(c => c.id !== updatedContact.id);
+        const newConv = { 
+          ...updatedContact, 
+          chatMessages: [message],
+          unreadCount: (selectedId === updatedContact.id) ? 0 : (updatedContact.unreadCount || 1)
+        };
+        return [newConv, ...otherConversations];
       });
 
-      // If this contact is currently open, add message to chat
       if (selectedId === updatedContact.id) {
         setChatData(prev => ({
           ...prev,
           messages: [...prev.messages, message],
-          isWindowOpen: true // Window opens on reply
+          isWindowOpen: true 
         }));
       }
     };
@@ -108,22 +107,40 @@ export default function Inbox() {
     scrollToBottom()
   }, [chatData.messages])
 
+  const handleSelectContact = (id) => {
+    setSelectedId(id)
+    setShowChatOnMobile(true)
+    setSearchParams({ contactId: id })
+  }
+
+  const handleBackToList = () => {
+    setShowChatOnMobile(false)
+    setSearchParams({})
+  }
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setSelectedFile(file)
+      setPreviewUrl(URL.createObjectURL(file))
+    }
+  }
+
   const handleSend = async (e) => {
     e.preventDefault()
-    if (!inputText.trim() || !selectedId || sending || !chatData.isWindowOpen) return
+    if ((!inputText.trim() && !selectedFile) || !selectedId || sending || !chatData.isWindowOpen) return
 
     setSending(true)
-    try {
-      const account = accounts.find(a => a.isActive) || accounts[0]
-      if (!account) throw new Error('No active account found')
+    const formData = new FormData()
+    const activeAccount = accounts.find(a => a.isActive) || accounts[0]
+    formData.append('accountId', activeAccount?.id)
+    if (inputText.trim()) formData.append('text', inputText)
+    if (selectedFile) formData.append('file', selectedFile)
 
+    try {
       const res = await fetch(`http://localhost:3001/api/inbox/${selectedId}/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          text: inputText,
-          accountId: account.id
-        })
+        body: formData
       })
       
       const result = await res.json()
@@ -131,8 +148,10 @@ export default function Inbox() {
       
       setChatData(prev => ({ ...prev, messages: [...prev.messages, result] }))
       setInputText('')
+      setSelectedFile(null)
+      setPreviewUrl(null)
     } catch (err) {
-      alert(err.message)
+      toast({ type: 'error', title: 'Send Error', message: err.message })
     } finally {
       setSending(false)
     }
@@ -148,24 +167,21 @@ export default function Inbox() {
 
   return (
     <div className="page fade-in">
-      <div className="inbox-page">
+      <div className={`inbox-page ${showChatOnMobile ? 'mobile-show-chat' : ''}`}>
         {/* Sidebar */}
         <aside className="inbox-sidebar">
           <div className="sidebar-header">
-            <h2 style={{ marginBottom: '12px' }}>Inbox</h2>
+            <h2>Inbox</h2>
             <div className="inbox-tabs">
-              <button 
-                className={`inbox-tab ${filter === 'all' ? 'active' : ''}`}
-                onClick={() => setFilter('all')}
-              >All</button>
-              <button 
-                className={`inbox-tab ${filter === 'replied' ? 'active' : ''}`}
-                onClick={() => setFilter('replied')}
-              >Active</button>
-              <button 
-                className={`inbox-tab ${filter === 'broadcast' ? 'active' : ''}`}
-                onClick={() => setFilter('broadcast')}
-              >Leads</button>
+              {['all', 'replied', 'broadcast'].map(f => (
+                <button 
+                  key={f}
+                  className={`inbox-tab ${filter === f ? 'active' : ''}`}
+                  onClick={() => setFilter(f)}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
             </div>
             <div className="search-bar" style={{ marginTop: '12px' }}>
               <Search size={16} />
@@ -177,7 +193,7 @@ export default function Inbox() {
             {loading ? (
               <div className="wizard-spinner" style={{ margin: '20px auto' }} />
             ) : filteredConversations.length === 0 ? (
-              <div className="empty-chat" style={{ padding: '40px' }}>
+              <div className="empty-chat-list">
                 <MessageSquare size={32} opacity={0.2} />
                 <p>No conversations</p>
               </div>
@@ -186,7 +202,7 @@ export default function Inbox() {
                 <div 
                   key={conv.id} 
                   className={`conversation-item ${selectedId === conv.id ? 'active' : ''}`}
-                  onClick={() => setSelectedId(conv.id)}
+                  onClick={() => handleSelectContact(conv.id)}
                 >
                   <div className="conversation-avatar">
                     <User size={20} />
@@ -218,26 +234,52 @@ export default function Inbox() {
             <>
               <header className="chat-header">
                 <div className="chat-header-info">
+                  <button className="inbox-mobile-back" onClick={handleBackToList}>
+                    <ChevronLeft size={24} />
+                  </button>
                   <div className="conversation-avatar" style={{ width: '36px', height: '36px' }}>
                     <User size={18} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{selectedContact?.name}</div>
-                    <div style={{ fontSize: '11px', opacity: 0.6, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {selectedContact?.phone}
-                      {chatData.isWindowOpen ? 
-                        <span style={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                          <Zap size={10} fill="currentColor" /> Window Open
-                        </span> : 
-                        <span style={{ color: 'var(--status-rejected)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                          <Clock size={10} /> Window Closed
-                        </span>
-                      }
+                  <div className="header-text">
+                    <div className="header-name-row">
+                      <div className="contact-name">{selectedContact?.name}</div>
+                      <span className={`chip chip-lead-${selectedContact?.leadStage || 'NEW'}`}>
+                        {selectedContact?.leadStage || 'NEW'}
+                      </span>
+                    </div>
+                    <div className="header-sub-row">
+                      <span className="contact-phone">{selectedContact?.phone}</span>
+                      <span className={`window-status ${chatData.isWindowOpen ? 'open' : 'closed'}`}>
+                        {chatData.isWindowOpen ? <Zap size={10} fill="currentColor" /> : <Clock size={10} />}
+                        {chatData.isWindowOpen ? 'Open' : 'Closed'}
+                      </span>
                     </div>
                   </div>
                 </div>
                 <div className="chat-header-actions">
-                  <Button variant="ghost" size="sm"><MoreVertical size={18} /></Button>
+                  <div className="lead-stage-selector hide-on-mobile">
+                    {['HOT', 'COLD', 'CLOSED'].map(stage => (
+                      <Button 
+                        key={stage} 
+                        variant="ghost" 
+                        size="xs"
+                        onClick={async () => {
+                          try {
+                            await fetch(`http://localhost:3001/api/contacts/${selectedId}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ leadStage: stage })
+                            });
+                            toast({ type: 'success', message: `Lead marked as ${stage}` });
+                            fetchInbox();
+                          } catch (e) { toast({ type: 'error', message: 'Failed to update stage' }); }
+                        }}
+                      >
+                        {stage}
+                      </Button>
+                    ))}
+                  </div>
+                  <Button variant="ghost" size="sm" className="btn-icon" aria-label="More options"><MoreVertical size={18} /></Button>
                 </div>
               </header>
 
@@ -246,10 +288,24 @@ export default function Inbox() {
                   <div key={msg.id} className={`message-wrapper ${msg.fromMe ? 'outgoing' : 'incoming'}`}>
                     <div className="message-bubble">
                       {msg.type === 'template_broadcast' && <span className="message-type-tag">Broadcast Campaign</span>}
+                      {msg.mediaUrl && (
+                        <div className="message-media">
+                          {msg.type === 'image' || (msg.type === 'template_broadcast' && msg.mediaUrl.match(/\.(jpg|jpeg|png|gif)$/i)) ? (
+                            <img src={msg.mediaUrl} alt="Sent image" onClick={() => window.open(msg.mediaUrl, '_blank')} />
+                          ) : msg.type === 'video' ? (
+                            <video src={msg.mediaUrl} controls />
+                          ) : (
+                            <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="document-link">
+                              <Paperclip size={16} /> 
+                              <span className="file-label">{msg.body || 'Attachment'}</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
                       <div className="message-body">{msg.body}</div>
                       <div className="message-footer">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        {msg.fromMe && <CheckCheck size={14} style={{ marginLeft: '4px', color: '#53bdeb' }} />}
+                        {msg.fromMe && <CheckCheck size={14} className={`status-icon ${msg.status || 'sent'}`} />}
                       </div>
                     </div>
                   </div>
@@ -257,14 +313,31 @@ export default function Inbox() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {previewUrl && (
+                <div className="media-preview-bar">
+                  <div className="preview-container">
+                    {selectedFile.type.startsWith('image/') ? (
+                      <img src={previewUrl} alt="Preview" />
+                    ) : (
+                      <div className="file-icon-preview"><Paperclip size={24} /></div>
+                    )}
+                    <span className="file-name">{selectedFile.name}</span>
+                    <button className="remove-preview" onClick={() => { setSelectedFile(null); setPreviewUrl(null); }}>×</button>
+                  </div>
+                </div>
+              )}
+
               {chatData.isWindowOpen ? (
                 <form className="chat-input-area" onSubmit={handleSend}>
-                  <Button type="button" variant="ghost" size="sm"><Smile size={20} /></Button>
-                  <Button type="button" variant="ghost" size="sm"><Paperclip size={20} /></Button>
+                  <Button type="button" variant="ghost" size="sm" className="btn-icon" onClick={() => setInputText(prev => prev + '😊')}><Smile size={20} /></Button>
+                  <label className="file-upload-label">
+                    <input type="file" onChange={handleFileChange} style={{ display: 'none' }} />
+                    <Paperclip size={20} />
+                  </label>
                   <div className="chat-input-wrapper">
                     <input 
                       className="chat-input" 
-                      placeholder="Type a reply..." 
+                      placeholder="Type a message..." 
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
                     />
@@ -272,25 +345,37 @@ export default function Inbox() {
                   <Button 
                     type="submit" 
                     variant="primary" 
+                    size="sm"
                     icon={Send} 
-                    disabled={!inputText.trim() || sending}
-                  >
-                    {sending ? '...' : ''}
-                  </Button>
+                    disabled={(!inputText.trim() && !selectedFile) || sending}
+                  />
                 </form>
               ) : (
                 <div className="policy-blocker">
-                  <Lock size={16} />
-                  <span>The 24-hour service window is closed. Use a <strong>Template</strong> to re-engage this lead.</span>
-                  <Button variant="primary" size="sm" style={{ marginLeft: 'auto' }}>Send Template</Button>
+                  <Lock size={14} />
+                  <span>24h window closed. Use a <strong>Template</strong> to re-engage.</span>
+                  <Button variant="primary" size="sm" className="hide-on-mobile">Send Template</Button>
                 </div>
               )}
             </>
           ) : (
-            <div className="empty-chat">
-              <MessageSquare size={80} opacity={0.1} />
-              <h2>Your Conversations</h2>
-              <p>Select a contact to view history and manage the 24h Meta service window.</p>
+            <div className="empty-chat-main">
+              <div className="empty-chat-card">
+                <div className="empty-chat-icon-pulse">
+                  <MessageSquare size={48} className="icon-gradient" />
+                </div>
+                <h2>Select a Conversation</h2>
+                <p>Choose a contact from the left to view their history and manage the 24h Meta service window.</p>
+                <div className="empty-chat-actions">
+                  <Button variant="primary" size="sm" onClick={() => window.location.href='/broadcast'}>Start Broadcast</Button>
+                  <Button variant="ghost" size="sm" onClick={() => window.location.href='/contacts'}>View Contacts</Button>
+                </div>
+              </div>
+              
+              <div className="empty-chat-hint">
+                <Lock size={12} />
+                <span>End-to-end encrypted messaging via WhatsApp Cloud API</span>
+              </div>
             </div>
           )}
         </main>

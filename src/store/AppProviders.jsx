@@ -9,21 +9,24 @@ import { ContactsProvider } from './ContactsContext'
 import { TemplatesProvider } from './TemplatesContext'
 import { BroadcastsProvider } from './BroadcastsContext'
 import { MediaProvider } from './MediaContext'
+import { ToastProvider } from './ToastContext'
 
 export function AppProviders({ children }) {
   return (
     <ThemeProvider>
-      <AccountsProvider>
-        <ContactsProvider>
-          <MediaProvider>
-            <TemplatesProvider>
-              <BroadcastsProvider>
-                {children}
-              </BroadcastsProvider>
-            </TemplatesProvider>
-          </MediaProvider>
-        </ContactsProvider>
-      </AccountsProvider>
+      <ToastProvider>
+        <AccountsProvider>
+          <ContactsProvider>
+            <MediaProvider>
+              <TemplatesProvider>
+                <BroadcastsProvider>
+                  {children}
+                </BroadcastsProvider>
+              </TemplatesProvider>
+            </MediaProvider>
+          </ContactsProvider>
+        </AccountsProvider>
+      </ToastProvider>
     </ThemeProvider>
   )
 }

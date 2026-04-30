@@ -1,52 +1,54 @@
 /* ============================================
-   Accounts Page (Phase 2 — Meta Manager Sync)
+   Accounts Page — Premium WABA-Grouped Design
    ============================================ */
 
-.accounts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: var(--space-lg);
+.accounts-page {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
 }
 
-/* Account Card */
-.account-card {
+/* ── WABA Groups ───────────────────────────── */
+
+.waba-groups-container {
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
-  padding: var(--space-lg) var(--space-xl);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  transition: all var(--transition-normal);
-  position: relative;
+  gap: var(--space-xl);
 }
 
-.account-card:hover {
-  background: var(--bg-card-hover);
+.waba-group {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-card);
+  transition: border-color var(--transition-fast);
+}
+
+.waba-group:hover {
   border-color: var(--border-default);
 }
 
-.account-card.active {
-  border-color: var(--accent);
-  background: var(--accent-dim);
-}
+/* ── WABA Group Header ─────────────────────── */
 
-.account-card.disabled {
-  opacity: 0.6;
-}
-
-/* Card Header */
-.account-card-header {
+.waba-group-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-md);
-  cursor: pointer;
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(16, 185, 129, 0.03);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.account-card-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
+.waba-group-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.waba-group-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
   background: var(--accent-dim);
   color: var(--accent);
   display: flex;
@@ -55,70 +57,305 @@
   flex-shrink: 0;
 }
 
-.account-card-info {
-  flex: 1;
+.waba-group-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.waba-group-id {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  margin-top: 2px;
+}
+
+.waba-group-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+.waba-count-badge {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--border-subtle);
+  padding: 4px 10px;
+  border-radius: var(--radius-chip);
+  border: 1px solid var(--border-subtle);
+}
+
+.waba-active-count {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 4px 10px;
+  border-radius: var(--radius-chip);
+}
+
+/* ── Accounts List inside group ────────────── */
+
+.waba-accounts-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1px;
+  background: var(--border-subtle);
+}
+
+/* ── Individual Account Card ───────────────── */
+
+.account-card {
+  background: var(--bg-surface);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  transition: background var(--transition-fast);
+}
+
+.account-card:hover {
+  background: var(--bg-card-hover);
+}
+
+.account-card.dimmed {
+  opacity: 0.6;
+}
+
+/* ── Card Header Row ───────────────────────── */
+
+.account-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.account-card-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   min-width: 0;
 }
 
-.account-card-name {
-  font-size: var(--font-size-md);
+.account-status-ring {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-round);
+  background: var(--bg-card);
+  border: 2px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.account-status-ring.ring-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-dim);
+}
+
+.account-card-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-phone {
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
-  margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.account-card-number-large {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
-  letter-spacing: -0.5px;
+.account-name {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.account-card-name-sub {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-.account-card-waba-label {
+.account-card-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 6px;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 2px 8px;
-  border-radius: 4px;
-  width: fit-content;
+  gap: var(--space-sm);
+  flex-shrink: 0;
 }
 
-.active-badge {
+/* ── Active Pill ───────────────────────────── */
+
+.active-pill {
   display: flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
   color: var(--accent);
   background: var(--accent-dim);
-  padding: 4px 10px;
-  border-radius: 99px;
-  border: 1px solid rgba(0, 168, 132, 0.2);
+  padding: 3px 8px;
+  border-radius: var(--radius-chip);
 }
 
-/* Account Details Grid */
-.account-details-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* ── Toggle Switch ─────────────────────────── */
+
+.toggle-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--border-default);
+  cursor: pointer;
+  transition: background var(--transition-normal);
+  border: none;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.toggle-switch.toggle-on {
+  background: var(--accent);
+}
+
+.toggle-switch.toggling {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  transition: transform var(--transition-normal);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.toggle-switch.toggle-on .toggle-thumb {
+  transform: translateX(18px);
+}
+
+/* ── Stats Row ─────────────────────────────── */
+
+.account-stats-row {
+  display: flex;
+  align-items: center;
   gap: var(--space-md);
-  padding: var(--space-md);
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.account-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: var(--font-weight-medium);
+}
+
+/* ── Quality Badge ─────────────────────────── */
+
+.quality-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 3px 8px;
+  border-radius: var(--radius-chip);
+}
+
+.quality-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Connection Badge ──────────────────────── */
+
+.connection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 3px 8px;
+  border-radius: var(--radius-chip);
+}
+
+.connection-badge.connected {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.connection-badge.offline {
+  color: var(--text-muted);
+  background: var(--border-subtle);
+}
+
+/* ── Tier Badge ────────────────────────────── */
+
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  background: var(--border-subtle);
+  padding: 3px 8px;
+  border-radius: var(--radius-chip);
+}
+
+/* ── Expand Toggle ─────────────────────────── */
+
+.expand-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: var(--space-xs) 0;
+  width: fit-content;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.expand-toggle:hover {
+  color: var(--text-secondary);
+}
+
+/* ── Expandable Details ────────────────────── */
+
+.account-details {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-sm) var(--space-md);
 }
 
 .detail-item {
@@ -128,63 +365,95 @@
 }
 
 .detail-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
   color: var(--text-muted);
-  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: var(--font-weight-medium);
 }
 
 .detail-value {
-  font-size: 12px;
-  color: var(--text-primary);
-  font-family: monospace;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
   word-break: break-all;
 }
 
-.quality-badge {
+.detail-value.mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 11px;
-  font-weight: 500;
 }
 
-.status-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 500;
-}
+/* ── Mode Badge ────────────────────────────── */
 
-.status-badge.online { color: var(--accent); }
-.status-badge.offline { color: var(--text-muted); }
-
-/* Actions Row */
-.account-card-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  flex-wrap: wrap;
-}
-
-.acct-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+.mode-badge {
   font-size: var(--font-size-xs);
+}
+
+.mode-badge.live { color: var(--accent); }
+.mode-badge.sandbox { color: #60a5fa; }
+
+/* ── Account Actions ───────────────────────── */
+
+.account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding-top: var(--space-xs);
+}
+
+.acct-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-base);
-  color: var(--text-muted);
-  cursor: pointer;
   transition: all var(--transition-fast);
+  cursor: pointer;
 }
 
-.acct-action-btn:hover {
-  border-color: var(--border-default);
-  color: var(--text-primary);
+.acct-action.danger {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
 }
 
-.acct-action-btn.success:hover  { border-color: var(--status-approved); color: var(--status-approved); }
-.acct-action-btn.warning:hover  { border-color: #eab308; color: #eab308; }
-.acct-action-btn.danger:hover   { border-color: #ef4444; color: #ef4444; }
+.acct-action.danger:hover {
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.acct-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Responsive ────────────────────────────── */
+
+@media (max-width: 768px) {
+  .waba-accounts-list {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .waba-group-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-sm);
+  }
+
+  .waba-group-meta {
+    align-self: flex-start;
+  }
+}
+
+@media (min-width: 1200px) {
+  .waba-accounts-list {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+}

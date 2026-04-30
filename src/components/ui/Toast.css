@@ -1,0 +1,108 @@
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  min-width: 340px;
+  max-width: 480px;
+  background: var(--bg-surface);
+  backdrop-filter: blur(16px) saturate(200%);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  box-shadow: var(--shadow-lg);
+  animation: toast-in 0.5s cubic-bezier(0.2, 1, 0.2, 1);
+  transition: all 0.4s ease;
+  position: relative;
+}
+
+.toast.success { border-color: var(--accent); background: rgba(16, 185, 129, 0.1); }
+.toast.error { border-color: var(--status-rejected); background: rgba(218, 54, 51, 0.1); }
+.toast.info { border-color: var(--status-sent); background: rgba(47, 129, 247, 0.1); }
+
+.toast-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.toast.success .toast-icon { color: var(--accent); }
+.toast.error .toast-icon { color: var(--status-rejected); }
+.toast.info .toast-icon { color: var(--status-sent); }
+
+.toast-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+
+.toast-message {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toast-close:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+@keyframes toast-in {
+  from {
+    transform: translateX(100%) scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.toast-out {
+  transform: translateX(100%) scale(0.9);
+  opacity: 0;
+}
+
+.toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.05);
+  width: 100%;
+}
+
+.toast-progress-fill {
+  height: 100%;
+  background: currentColor;
+  transition: width linear;
+}
