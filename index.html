@@ -8,7 +8,32 @@
     <title>WhatsApp Broadcast CRM — Premium</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg-root: #0b0e14;
+        --accent: #10b981;
+        --text-primary: #f0f6fc;
+        --font-family: 'Outfit', 'Inter', sans-serif;
+        --sidebar-width-collapsed: 80px;
+        --command-strip-height: 56px;
+      }
+      body {
+        margin: 0;
+        background-color: var(--bg-root);
+        color: var(--text-primary);
+        font-family: var(--font-family);
+        overflow: hidden;
+      }
+      #root { min-height: 100vh; display: flex; flex-direction: column; }
+      .app-layout { height: 100vh; display: flex; flex-direction: column; }
+      .app-content { flex: 1; display: flex; flex-direction: column; }
+      .sidebar-placeholder { width: var(--sidebar-width-collapsed); height: 100%; background: rgba(0,0,0,0.1); }
+      @media (max-width: 768px) {
+        .sidebar-placeholder { width: 0; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

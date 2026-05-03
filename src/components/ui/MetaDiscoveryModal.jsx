@@ -1,3 +1,4 @@
+import config from '../../config.js';
 import React, { useState } from 'react'
 import { X, Search, Building2, Smartphone, CheckCircle, AlertCircle, Loader2, RefreshCw, Import } from 'lucide-react'
 import { Button } from './Button'
@@ -35,7 +36,7 @@ export function MetaDiscoveryModal({ isOpen, onClose }) {
     setDiscovered([])
     setSelected(new Set())
     try {
-      const res = await fetch('http://localhost:3001/api/meta/discover', {
+      const res = await fetch(config.API_URL + "/meta/discover", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ businessId: businessId.trim(), accessToken: accessToken.trim() }),
@@ -71,7 +72,7 @@ export function MetaDiscoveryModal({ isOpen, onClose }) {
     const results = []
     for (const number of toImport) {
       try {
-        const res = await fetch('http://localhost:3001/api/meta/sync-account', {
+        const res = await fetch(config.API_URL + "/meta/sync-account", {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(number),

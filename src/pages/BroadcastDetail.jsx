@@ -1,3 +1,4 @@
+import config from '../config.js';
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { 
@@ -30,7 +31,12 @@ export default function BroadcastDetail() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetch(`http://localhost:3001/api/broadcasts/${id}`)
+    if (!id || id === 'undefined') {
+      setError('Invalid Broadcast ID')
+      setLoading(false)
+      return
+    }
+    fetch(`${config.API_URL}/broadcasts/${id}`)
       .then(res => {
         if (!res.ok) throw new Error('Broadcast not found')
         return res.json()
@@ -110,8 +116,8 @@ export default function BroadcastDetail() {
   const { stats, messages, template, account } = data
   
   const filteredMessages = messages.filter(m => 
-    m.contact.name.toLowerCase().includes(search.toLowerCase()) ||
-    m.contact.phone.includes(search)
+    (m.contact?.name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (m.contact?.phone || '').includes(search)
   )
 
   const openRate = stats.sent > 0 ? Math.round((stats.read / stats.sent) * 100) : 0
@@ -128,6 +134,35 @@ export default function BroadcastDetail() {
           </Link>
         </div>
 
+        {/* Error Banner */}
+        {(stats.failed > 0 || data.status === 'failed' || data.status === 'completed_with_errors') && (
+          <div className="error-banner fade-in">
+            <div className="error-banner-icon">
+              <AlertCircle size={20} />
+            </div>
+            <div className="error-banner-content">
+              <h3>Campaign Issue Detected</h3>
+              <p>
+                {messages.find(m => m.error)?.error || 
+                 data.results?.error || 
+                 'One or more messages failed to send due to a technical issue with the Meta API.'}
+              </p>
+            </div>
+            {messages.find(m => m.error?.includes('131005')) && (
+              <div className="error-banner-action">
+                <a 
+                  href="https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="btn-error-link"
+                >
+                  View Meta Error Docs <ExternalLink size={12} />
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Header Card */}
         <div className="detail-header-card">
           <div className="detail-meta">
@@ -136,12 +171,12 @@ export default function BroadcastDetail() {
               <span className="detail-id">#{id.split('-')[0].toUpperCase()}</span>
             </div>
             <p className="detail-subtitle">
-              Sent via <strong>{account.displayName}</strong> · {new Date(data.sentAt).toLocaleString()}
+              Sent via <strong>{account?.displayName || 'Unknown Account'}</strong> · {data.sentAt ? new Date(data.sentAt).toLocaleString() : 'Date unknown'}
             </p>
           </div>
-          <div className={`chip chip-${data.status}`}>
+          <div className={`chip chip-${data.status || 'unknown'}`}>
             <span className="chip-dot" />
-            {data.status.charAt(0).toUpperCase() + data.status.slice(1)}
+            {(data.status || 'unknown').charAt(0).toUpperCase() + (data.status || 'unknown').slice(1)}
           </div>
         </div>
 
@@ -155,7 +190,7 @@ export default function BroadcastDetail() {
           <div className="stat-card">
             <div className="stat-label"><Send size={14} /> Messages Sent</div>
             <div className="stat-value">{stats.sent}</div>
-            <div className="stat-percent positive">{Math.round((stats.sent/stats.total)*100)}% Success Rate</div>
+            <div className="stat-percent positive">{stats.total > 0 ? Math.round((stats.sent/stats.total)*100) : 0}% Success Rate</div>
           </div>
           <div className="stat-card">
             <div className="stat-label"><CheckCheck size={14} /> Delivered</div>
@@ -201,13 +236,13 @@ export default function BroadcastDetail() {
                     <span>{stats.sent} / {stats.total}</span>
                   </div>
                   <div className="progress-bar-bg">
-                    <div className="progress-bar-fill" style={{ width: `${(stats.sent/stats.total)*100}%`, background: 'var(--status-sent)' }} />
+                    <div className="progress-bar-fill" style={{ width: `${stats.total > 0 ? (stats.sent/stats.total)*100 : 0}%`, background: 'var(--status-sent)' }} />
                   </div>
                 </div>
                 <div className="progress-item">
                   <div className="progress-label-row">
                     <span>Delivered</span>
-                    <span>{stats.delivered} / {stats.sent || 1}</span>
+                    <span>{stats.delivered} / {stats.sent}</span>
                   </div>
                   <div className="progress-bar-bg">
                     <div className="progress-bar-fill" style={{ width: `${data.metrics?.deliveryRate}%`, background: 'var(--accent)' }} />
@@ -216,7 +251,7 @@ export default function BroadcastDetail() {
                 <div className="progress-item">
                   <div className="progress-label-row">
                     <span>Read</span>
-                    <span>{stats.read} / {stats.delivered || 1}</span>
+                    <span>{stats.read} / {stats.delivered}</span>
                   </div>
                   <div className="progress-bar-bg">
                     <div className="progress-bar-fill" style={{ width: `${data.metrics?.readRate}%`, background: '#2ecc71' }} />

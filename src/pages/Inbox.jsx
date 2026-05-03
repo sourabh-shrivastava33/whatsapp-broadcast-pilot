@@ -1,25 +1,28 @@
-import React, { useState, useEffect, useRef } from 'react'
+import config from '../config.js';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { 
-  Search, 
-  MessageSquare, 
-  User, 
-  Send, 
-  Paperclip, 
-  Smile, 
-  MoreVertical,
-  CheckCheck,
-  Lock,
-  Zap,
-  Clock,
-  RefreshCcw,
-  ChevronLeft
-} from 'lucide-react'
+import Search from 'lucide-react/dist/esm/icons/search'
+import MessageSquare from 'lucide-react/dist/esm/icons/message-square'
+import User from 'lucide-react/dist/esm/icons/user'
+import Send from 'lucide-react/dist/esm/icons/send'
+import Paperclip from 'lucide-react/dist/esm/icons/paperclip'
+import Smile from 'lucide-react/dist/esm/icons/smile'
+import MoreVertical from 'lucide-react/dist/esm/icons/more-vertical'
+import CheckCheck from 'lucide-react/dist/esm/icons/check-check'
+import Lock from 'lucide-react/dist/esm/icons/lock'
+import Zap from 'lucide-react/dist/esm/icons/zap'
+import Clock from 'lucide-react/dist/esm/icons/clock'
+import RefreshCcw from 'lucide-react/dist/esm/icons/refresh-ccw'
+import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left'
+
 import { Button } from '../components/ui/Button'
 import { useAccounts } from '../store/AccountsContext'
 import { useToast } from '../store/ToastContext'
-import './Inbox.css'
 import { socket } from '../lib/socket'
+import { InboxSkeleton } from './inbox/InboxSkeleton'
+import { ConversationItem } from './inbox/ConversationItem'
+import { MessageBubble } from './inbox/MessageBubble'
+import './Inbox.css'
 
 export default function Inbox() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -40,42 +43,42 @@ export default function Inbox() {
   
   const messagesEndRef = useRef(null)
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+  }, [])
 
-  const fetchInbox = async () => {
+  const fetchInbox = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/inbox')
+      const res = await fetch(config.API_URL + "/inbox")
       const data = await res.json()
-      const uniqueData = Array.from(new Map(data.map(item => [item.id, item])).values())
+      const uniqueData = Array.isArray(data) ? Array.from(new Map(data.map(item => [item.id, item])).values()) : []
       setConversations(uniqueData)
       setLoading(false)
     } catch (err) {
       console.error('Failed to fetch inbox', err)
     }
-  }
+  }, [])
 
-  const fetchMessages = async (contactId) => {
+  const fetchMessages = useCallback(async (contactId) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/inbox/${contactId}`)
+      const res = await fetch(`${config.API_URL}/inbox/${contactId}`)
       const data = await res.json()
       setChatData(data)
       setConversations(prev => prev.map(c => c.id === contactId ? { ...c, unreadCount: 0 } : c))
     } catch (err) {
       console.error('Failed to fetch messages', err)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchInbox()
-  }, [])
+  }, [fetchInbox])
 
   useEffect(() => {
     if (selectedId) {
       fetchMessages(selectedId)
     }
-  }, [selectedId])
+  }, [selectedId, fetchMessages])
 
   useEffect(() => {
     const handleNewMessage = (payload) => {
@@ -105,18 +108,18 @@ export default function Inbox() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [chatData.messages])
+  }, [chatData.messages, scrollToBottom])
 
-  const handleSelectContact = (id) => {
+  const handleSelectContact = useCallback((id) => {
     setSelectedId(id)
     setShowChatOnMobile(true)
     setSearchParams({ contactId: id })
-  }
+  }, [setSearchParams])
 
-  const handleBackToList = () => {
+  const handleBackToList = useCallback(() => {
     setShowChatOnMobile(false)
     setSearchParams({})
-  }
+  }, [setSearchParams])
 
   const handleFileChange = (e) => {
     const file = e.target.files[0]
@@ -138,7 +141,7 @@ export default function Inbox() {
     if (selectedFile) formData.append('file', selectedFile)
 
     try {
-      const res = await fetch(`http://localhost:3001/api/inbox/${selectedId}/send`, {
+      const res = await fetch(`http://127.0.0.1:3001/api/inbox/${selectedId}/send`, {
         method: 'POST',
         body: formData
       })
@@ -157,13 +160,15 @@ export default function Inbox() {
     }
   }
 
-  const filteredConversations = conversations.filter(c => {
+  const filteredConversations = useMemo(() => (conversations || []).filter(c => {
     if (filter === 'replied') return c.category === 'replied'
     if (filter === 'broadcast') return c.category === 'broadcast_only'
     return true
-  })
+  }), [conversations, filter])
 
-  const selectedContact = conversations.find(c => c.id === selectedId)
+  const selectedContact = useMemo(() => (conversations || []).find(c => c.id === selectedId), [conversations, selectedId])
+
+  if (loading) return <InboxSkeleton />
 
   return (
     <div className="page fade-in">
@@ -190,39 +195,19 @@ export default function Inbox() {
           </div>
           
           <div className="conversation-list">
-            {loading ? (
-              <div className="wizard-spinner" style={{ margin: '20px auto' }} />
-            ) : filteredConversations.length === 0 ? (
+            {filteredConversations.length === 0 ? (
               <div className="empty-chat-list">
                 <MessageSquare size={32} opacity={0.2} />
                 <p>No conversations</p>
               </div>
             ) : (
               filteredConversations.map(conv => (
-                <div 
-                  key={conv.id} 
-                  className={`conversation-item ${selectedId === conv.id ? 'active' : ''}`}
+                <ConversationItem 
+                  key={conv.id}
+                  conv={conv}
+                  isActive={selectedId === conv.id}
                   onClick={() => handleSelectContact(conv.id)}
-                >
-                  <div className="conversation-avatar">
-                    <User size={20} />
-                    {conv.isWindowOpen && <div className="online-indicator" />}
-                  </div>
-                  <div className="conversation-info">
-                    <div className="info-top">
-                      <span className="contact-name">{conv.name}</span>
-                      <span className="last-time">
-                        {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                      </span>
-                    </div>
-                    <div className="info-bottom">
-                      <span className="last-message">
-                        {conv.chatMessages?.[0]?.body || 'Passive lead'}
-                      </span>
-                      {conv.unreadCount > 0 && <span className="unread-badge">{conv.unreadCount}</span>}
-                    </div>
-                  </div>
-                </div>
+                />
               ))
             )}
           </div>
@@ -265,7 +250,7 @@ export default function Inbox() {
                         size="xs"
                         onClick={async () => {
                           try {
-                            await fetch(`http://localhost:3001/api/contacts/${selectedId}`, {
+                            await fetch(`http://127.0.0.1:3001/api/contacts/${selectedId}`, {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ leadStage: stage })
@@ -285,30 +270,7 @@ export default function Inbox() {
 
               <div className="chat-messages">
                 {chatData.messages.map(msg => (
-                  <div key={msg.id} className={`message-wrapper ${msg.fromMe ? 'outgoing' : 'incoming'}`}>
-                    <div className="message-bubble">
-                      {msg.type === 'template_broadcast' && <span className="message-type-tag">Broadcast Campaign</span>}
-                      {msg.mediaUrl && (
-                        <div className="message-media">
-                          {msg.type === 'image' || (msg.type === 'template_broadcast' && msg.mediaUrl.match(/\.(jpg|jpeg|png|gif)$/i)) ? (
-                            <img src={msg.mediaUrl} alt="Sent image" onClick={() => window.open(msg.mediaUrl, '_blank')} />
-                          ) : msg.type === 'video' ? (
-                            <video src={msg.mediaUrl} controls />
-                          ) : (
-                            <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="document-link">
-                              <Paperclip size={16} /> 
-                              <span className="file-label">{msg.body || 'Attachment'}</span>
-                            </a>
-                          )}
-                        </div>
-                      )}
-                      <div className="message-body">{msg.body}</div>
-                      <div className="message-footer">
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        {msg.fromMe && <CheckCheck size={14} className={`status-icon ${msg.status || 'sent'}`} />}
-                      </div>
-                    </div>
-                  </div>
+                  <MessageBubble key={msg.id} msg={msg} />
                 ))}
                 <div ref={messagesEndRef} />
               </div>

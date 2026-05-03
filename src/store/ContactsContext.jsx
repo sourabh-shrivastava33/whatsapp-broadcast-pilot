@@ -1,17 +1,18 @@
+import config from '../config.js';
 /**
  * ContactsContext — manages broadcast recipients.
  */
 import React, { createContext, useContext, useReducer, useEffect } from 'react'
 
 const ContactsContext = createContext(null)
-const API_URL = 'http://localhost:3001/api/contacts'
+const API_URL = config.API_URL + "/contacts"
 
-const INITIAL_STATE = { contacts: [] }
+const INITIAL_STATE = { contacts: [], loading: true }
 
 function reducer(state, action) {
   switch (action.type) {
     case 'SET_CONTACTS':
-      return { ...state, contacts: action.payload }
+      return { ...state, contacts: action.payload, loading: false }
     case 'ADD_CONTACT':
       return { ...state, contacts: [...state.contacts, action.payload] }
     case 'UPDATE_CONTACT': {
@@ -36,7 +37,10 @@ export function ContactsProvider({ children }) {
     fetch(API_URL)
       .then(res => res.json())
       .then(data => dispatch({ type: 'SET_CONTACTS', payload: data }))
-      .catch(err => console.error('Failed to fetch contacts', err))
+      .catch(err => {
+        console.error('Failed to fetch contacts', err)
+        dispatch({ type: 'SET_CONTACTS', payload: [] })
+      })
   }, [])
 
   return (
@@ -52,6 +56,7 @@ export function useContacts() {
   const { state, dispatch } = ctx
   return {
     contacts: state.contacts,
+    loading: state.loading,
     
     addContact: async (payload) => {
       try {

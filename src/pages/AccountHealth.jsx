@@ -1,3 +1,4 @@
+import config from '../config.js';
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Activity, 
@@ -23,11 +24,12 @@ export default function AccountHealth() {
 
   // Fetch accounts to choose from
   useEffect(() => {
-    fetch('http://localhost:3001/api/accounts')
+    fetch(config.API_URL + "/accounts")
       .then(res => res.json())
       .then(data => {
-        setAccounts(data);
-        if (data.length > 0) setSelectedId(data[0].id);
+        const accountsData = Array.isArray(data) ? data : [];
+        setAccounts(accountsData);
+        if (accountsData.length > 0) setSelectedId(accountsData[0].id);
       })
       .catch(err => console.error('Failed to load accounts', err));
   }, []);
@@ -37,7 +39,7 @@ export default function AccountHealth() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`http://localhost:3001/api/accounts/${id}/health`);
+      const res = await fetch(`${config.API_URL}/accounts/${id}/health`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setHealth(data);

@@ -1,3 +1,4 @@
+import config from '../config.js';
 import React, { useState, useEffect, useMemo } from 'react'
 import { Activity, ShieldAlert, ShieldCheck, Info, AlertTriangle, AlertCircle, RefreshCw } from 'lucide-react'
 import { useAccounts } from '../store/AccountsContext'
@@ -10,7 +11,7 @@ export default function HealthDashboard() {
   
   // Setup Socket.io connection for live health updates
   useEffect(() => {
-    const socket = io('http://localhost:3001')
+    const socket = io(config.SOCKET_URL)
     
     socket.on('account_health_updated', (data) => {
       // data: { accountId, qualityRating, event }

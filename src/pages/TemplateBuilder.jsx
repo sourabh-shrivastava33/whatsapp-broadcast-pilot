@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Trash2, Save, Eye, AlertCircle, Send, CheckCircle2, XCircle, 
   Image as ImageIcon, Video as VideoIcon, FileText as FileIcon, Type as TextIcon,
-  Info, HelpCircle, Tag, Globe, MessageSquare
+  Info, HelpCircle, Tag, Globe, MessageSquare, ShieldCheck
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { WhatsAppPreview } from '../components/ui/WhatsAppPreview'
@@ -12,7 +12,8 @@ import { MediaPickerModal } from '../components/ui/MediaPickerModal'
 import { useTemplates } from '../store/TemplatesContext'
 import './TemplateBuilder.css'
 
-/* ... rest of constants ... */
+const AUTH_BODY = '{{1}} is your verification code. For your security, do not share this code.'
+const AUTH_FOOTER = 'For your security, do not share this code.'
 
 /* ── constants ── */
 const CATEGORIES = [
@@ -63,6 +64,7 @@ export default function TemplateBuilder() {
     body: '',
     footer: '',
     buttons: [],
+    limitedTimeOffer: null, // { text: 'Flash Sale!', has_expiration: true }
   })
   const [samples, setSamples] = useState({})
   const [errors, setErrors] = useState({})
@@ -82,6 +84,7 @@ export default function TemplateBuilder() {
         body: existing.body || '',
         footer: existing.footer || '',
         buttons: existing.buttons || [],
+        limitedTimeOffer: existing.limitedTimeOffer || null,
       })
       // restore sample values
       const sv = {}
@@ -116,7 +119,29 @@ export default function TemplateBuilder() {
     if (isReadOnly) return
     setForm((p) => ({
       ...p,
-      buttons: p.buttons.map((b, idx) => (idx === i ? { ...b, [field]: value } : b)),
+      buttons: p.buttons.map((b, idx) => {
+        if (idx === i) {
+          const newBtn = { ...b, [field]: value };
+          // Default values for specialized types
+          if (field === 'type') {
+            if (value === 'OTP') {
+              newBtn.otp_type = 'COPY_CODE';
+              newBtn.text = 'Copy Code';
+            } else if (value === 'CATALOG') {
+              newBtn.text = 'View Catalog';
+            } else if (value === 'OPT_OUT') {
+              newBtn.type = 'QUICK_REPLY';
+              newBtn.text = 'Stop promotions';
+              newBtn.isOptOut = true;
+            } else if (value === 'COPY_CODE') {
+              newBtn.text = 'Copy Code';
+              newBtn.example = 'SAVE20';
+            }
+          }
+          return newBtn;
+        }
+        return b;
+      }),
     }))
   }
 
@@ -158,22 +183,15 @@ export default function TemplateBuilder() {
       mediaUrl: form.mediaUrl,
       body: form.body.trim(),
       footer: form.footer.trim(),
-      buttons: form.buttons.filter((b) => b.text.trim()),
+      buttons: form.buttons.filter((b) => (b.text && b.text.trim()) || b.type === 'COPY_CODE'),
       variables: variables.map((n) => ({ num: n, sample: samples[n] || '' })),
+      limitedTimeOffer: form.limitedTimeOffer,
     }
     if (isEdit && existing) {
       updateTemplate({ id: existing.id, ...payload })
       return existing.id
     } else {
       addTemplate(payload)
-      // Since addTemplate generates an ID internally and doesn't return it,
-      // a robust app would return it. For this demo flow, returning the
-      // predictable deterministic logic or updating status on list view works.
-      // We will actually just update the last added item since this is sync.
-      const idStr = form.name.trim() // Actually addTemplate uses nanoid. 
-      // To fix this without refactoring context, we'll just navigate back, 
-      // where the user can submit it. Wait, the req says "submit changes status".
-      // Let's refactor the save to use a generic approach.
     }
   }
 
@@ -190,8 +208,9 @@ export default function TemplateBuilder() {
       mediaUrl: form.mediaUrl,
       body: form.body.trim(),
       footer: form.footer.trim(),
-      buttons: form.buttons.filter((b) => b.text.trim()),
+      buttons: form.buttons.filter((b) => (b.text && b.text.trim()) || b.type === 'COPY_CODE'),
       variables: variables.map((n) => ({ num: n, sample: samples[n] || '' })),
+      limitedTimeOffer: form.limitedTimeOffer,
     }
 
     if (isEdit && existing) {
@@ -232,7 +251,7 @@ export default function TemplateBuilder() {
 
   /* status chip for edit mode */
   const statusChip = isEdit && existing ? (
-    <Chip label={existing.status.charAt(0).toUpperCase() + existing.status.slice(1)} status={existing.status} />
+    <Chip label={(existing.status || 'draft').charAt(0).toUpperCase() + (existing.status || 'draft').slice(1)} status={existing.status || 'draft'} />
   ) : null
 
   return (
@@ -263,7 +282,10 @@ export default function TemplateBuilder() {
                 </Button>
               </>
             ) : (
-              <span className="builder-locked-text">This template is approved and locked.</span>
+              <div className="status-badge-premium approved">
+                <ShieldCheck size={14} />
+                <span>Approved & Protected</span>
+              </div>
             )
           ) : (
             <>
@@ -420,17 +442,33 @@ export default function TemplateBuilder() {
             {/* Body */}
             <div className="form-group">
               <label className="form-label" htmlFor="tpl-body">Body *</label>
-              <textarea
-                id="tpl-body"
-                rows={5}
-                placeholder={'Hi {{1}}, your order {{2}} has been confirmed!\n\nThank you for shopping with us.'}
-                value={form.body}
-                onChange={set('body')}
-                className={errors.body ? 'error' : ''}
-                disabled={isReadOnly}
-              />
+              {form.category === 'AUTHENTICATION' ? (
+                <div className="auth-body-locked">
+                  <textarea
+                    id="tpl-body"
+                    rows={3}
+                    value={AUTH_BODY}
+                    readOnly
+                    className="locked-input"
+                  />
+                  <div className="auth-notice">
+                    <Info size={12} />
+                    Authentication templates use a fixed format required by Meta.
+                  </div>
+                </div>
+              ) : (
+                <textarea
+                  id="tpl-body"
+                  rows={5}
+                  placeholder={'Hi {{1}}, your order {{2}} has been confirmed!\n\nThank you for shopping with us.'}
+                  value={form.body}
+                  onChange={set('body')}
+                  className={errors.body ? 'error' : ''}
+                  disabled={isReadOnly}
+                />
+              )}
               <div className="form-hint">
-                {form.body.length}/1024 · Use {'{{'} 1 {'}}'}, {'{{'} 2 {'}}'} etc. for variables
+                {form.category === 'AUTHENTICATION' ? 'Fixed' : `${form.body.length}/1024`} · Use {'{{'} 1 {'}}'}, {'{{'} 2 {'}}'} etc. for variables
               </div>
               {errors.body && <span className="form-error">{errors.body}</span>}
             </div>
@@ -443,15 +481,56 @@ export default function TemplateBuilder() {
               <input
                 id="tpl-footer"
                 type="text"
-                placeholder="e.g. Reply STOP to unsubscribe"
+                placeholder={form.category === 'AUTHENTICATION' ? AUTH_FOOTER : "e.g. Reply STOP to unsubscribe"}
                 maxLength={60}
-                value={form.footer}
+                value={form.category === 'AUTHENTICATION' ? (form.footer || AUTH_FOOTER) : form.footer}
                 onChange={set('footer')}
-                disabled={isReadOnly}
+                disabled={isReadOnly || form.category === 'AUTHENTICATION'}
               />
-              <div className="form-hint">{form.footer.length}/60</div>
+              <div className="form-hint">{form.category === 'AUTHENTICATION' ? 'Required for Authentication' : `${form.footer.length}/60`}</div>
             </div>
           </div>
+
+          {/* Marketing Specialized: Limited Time Offer */}
+          {form.category === 'MARKETING' && (
+            <div className="builder-section">
+              <div className="builder-section-header">
+                <h2 className="builder-section-title">
+                  Limited-Time Offer
+                  <span className="builder-section-badge">New</span>
+                </h2>
+                <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input 
+                    type="checkbox" 
+                    id="lto-toggle" 
+                    checked={!!form.limitedTimeOffer}
+                    onChange={(e) => setForm(p => ({ 
+                      ...p, 
+                      limitedTimeOffer: e.target.checked ? { text: 'Flash Sale!', has_expiration: true } : null 
+                    }))}
+                    style={{ width: 'auto' }}
+                  />
+                  <label htmlFor="lto-toggle" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Enable Banner</label>
+                </div>
+              </div>
+              {form.limitedTimeOffer && (
+                <div className="lto-config fade-in" style={{ background: 'var(--bg-card)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Banner Text</label>
+                    <input 
+                      type="text" 
+                      value={form.limitedTimeOffer.text} 
+                      onChange={(e) => setForm(p => ({ 
+                        ...p, 
+                        limitedTimeOffer: { ...p.limitedTimeOffer, text: e.target.value } 
+                      }))}
+                      placeholder="e.g. Flash Sale!"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="builder-divider" />
 
@@ -518,9 +597,18 @@ export default function TemplateBuilder() {
                       onChange={(e) => updateButton(i, 'type', e.target.value)}
                       disabled={isReadOnly}
                     >
-                      <option value="QUICK_REPLY">Quick Reply</option>
-                      <option value="URL">URL</option>
-                      <option value="PHONE_NUMBER">Phone</option>
+                      {form.category === 'AUTHENTICATION' ? (
+                        <option value="OTP">OTP (Copy/One-Tap)</option>
+                      ) : (
+                        <>
+                          <option value="QUICK_REPLY">Quick Reply</option>
+                          <option value="URL">URL</option>
+                          <option value="PHONE_NUMBER">Phone</option>
+                          <option value="CATALOG">Catalog</option>
+                          <option value="OPT_OUT">Marketing Opt-out</option>
+                          <option value="COPY_CODE">Copy Offer Code</option>
+                        </>
+                      )}
                     </select>
                     <input
                       type="text"
@@ -528,8 +616,49 @@ export default function TemplateBuilder() {
                       placeholder="Button label"
                       value={btn.text}
                       onChange={(e) => updateButton(i, 'text', e.target.value)}
-                      disabled={isReadOnly}
+                      disabled={isReadOnly || btn.type === 'OTP' || btn.type === 'CATALOG'}
                     />
+                    
+                    {/* Specialized Button Options */}
+                    {btn.type === 'OTP' && (
+                      <select
+                        className="builder-button-subtype"
+                        value={btn.otp_type}
+                        onChange={(e) => updateButton(i, 'otp_type', e.target.value)}
+                        disabled={isReadOnly}
+                      >
+                        <option value="COPY_CODE">Copy Code</option>
+                        <option value="ONE_TAP">One-Tap (Android)</option>
+                      </select>
+                    )}
+                    
+                    {btn.otp_type === 'ONE_TAP' && (
+                      <div className="otp-details">
+                        <input 
+                          type="text" 
+                          placeholder="Package Name" 
+                          value={btn.package_name || ''} 
+                          onChange={(e) => updateButton(i, 'package_name', e.target.value)}
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Hash" 
+                          value={btn.signature_hash || ''} 
+                          onChange={(e) => updateButton(i, 'signature_hash', e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    {btn.type === 'COPY_CODE' && (
+                      <div className="otp-details">
+                        <input 
+                          type="text" 
+                          placeholder="Coupon Code Example" 
+                          value={btn.example || ''} 
+                          onChange={(e) => updateButton(i, 'example', e.target.value)}
+                        />
+                      </div>
+                    )}
                     <button
                       className="builder-button-remove"
                       onClick={() => removeButton(i)}
@@ -553,21 +682,39 @@ export default function TemplateBuilder() {
           )}
         </div>
 
-          {/* ── RIGHT: Preview ── */}
+        {/* ── RIGHT: Preview ── */}
         <div className="builder-preview-panel">
-          <div className="builder-preview-header">
-            <Eye size={15} />
-            Live Preview
+          <div className="preview-sticky-wrapper">
+            <div className="builder-preview-header">
+              <Eye size={15} />
+              <span>LIVE PREVIEW</span>
+              <div className="preview-live-dot" />
+            </div>
+            <div className={`preview-container-premium ${status === 'approved' ? 'is-approved' : ''}`}>
+              <WhatsAppPreview
+                header={form.header}
+                headerType={form.headerType}
+                mediaUrl={form.mediaUrl}
+                body={form.body}
+                footer={form.footer}
+                buttons={form.buttons}
+                sampleValues={samples}
+                limitedTimeOffer={form.limitedTimeOffer}
+              />
+              
+              {!form.body && !form.header && (
+                <div className="preview-empty-ux">
+                  <div className="ux-gif-wrapper">
+                    <img 
+                      src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJ1ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1z/3o7TKMGpx4RQC9KkAU/giphy.gif" 
+                      alt="Empty"
+                    />
+                  </div>
+                  <p>Start typing to see the magic happen...</p>
+                </div>
+              )}
+            </div>
           </div>
-          <WhatsAppPreview
-            header={form.header}
-            headerType={form.headerType}
-            mediaUrl={form.mediaUrl}
-            body={form.body}
-            footer={form.footer}
-            buttons={form.buttons}
-            sampleValues={samples}
-          />
         </div>
       </div>
 

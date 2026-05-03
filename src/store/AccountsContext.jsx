@@ -1,3 +1,4 @@
+import config from '../config.js';
 /**
  * AccountsContext — manages WhatsApp account connections.
  *
@@ -11,7 +12,7 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react'
 
 const AccountsContext = createContext(null)
-const API_BASE = 'http://localhost:3001/api/accounts'
+const API_BASE = config.API_URL + "/accounts"
 
 const INITIAL_STATE = {
   accounts: [],

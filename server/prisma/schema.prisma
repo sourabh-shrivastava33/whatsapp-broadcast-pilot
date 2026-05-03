@@ -42,6 +42,7 @@ model Contact {
   optOutTimestamp DateTime?
   optOutReason    String?
   isBlocklisted   Boolean      @default(false)
+  lastAccountId   String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   messages        MessageLog[]
@@ -57,6 +58,7 @@ model ChatMessage {
   body          String?
   mediaUrl      String?
   metaMessageId String?  @unique
+  accountId     String?
   timestamp     DateTime @default(now())
 }
 
@@ -111,22 +113,34 @@ model Broadcast {
   status     String       @default("pending")
   results    Json?
   sentAt     DateTime     @default(now())
+  isPaused   Boolean      @default(false)
+  stopReason String?
+  correlationId String?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
   messages   MessageLog[]
 }
 
 model MessageLog {
-  id            String    @id @default(uuid())
-  broadcastId   String
-  broadcast     Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
-  contactId     String
-  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  status        String    @default("queued") // queued, sent, delivered, read, failed
-  metaMessageId String?   @unique
-  error         String?
-  sentAt        DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  broadcastId    String
+  broadcast      Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status         String    @default("queued") // queued, sent, delivered, read, failed
+  metaMessageId  String?   @unique
+  idempotencyKey String?   @unique
+  error          String?
+  correlationId  String?
+  sentAt         DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model SystemConfig {
+  id          String   @id @default("global")
+  isPaused    Boolean  @default(false)
+  pauseReason String?
+  updatedAt   DateTime @updatedAt
 }
 
 

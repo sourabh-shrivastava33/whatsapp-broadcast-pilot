@@ -1,16 +1,27 @@
-import React, { useState, useMemo, useRef } from 'react'
-import {
-  ShieldCheck, ShieldAlert, Upload, Download, Search,
-  Filter, Ban, CheckCircle, AlertTriangle, AlertCircle, Info, Lock
-} from 'lucide-react'
+import config from '../config.js';
+import React, { useState, useMemo, useRef, memo, useCallback } from 'react'
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check'
+import ShieldAlert from 'lucide-react/dist/esm/icons/shield-alert'
+import Upload from 'lucide-react/dist/esm/icons/upload'
+import Download from 'lucide-react/dist/esm/icons/download'
+import Search from 'lucide-react/dist/esm/icons/search'
+import Filter from 'lucide-react/dist/esm/icons/filter'
+import Ban from 'lucide-react/dist/esm/icons/ban'
+import CheckCircle from 'lucide-react/dist/esm/icons/check-circle'
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle'
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle'
+import Info from 'lucide-react/dist/esm/icons/info'
+import Lock from 'lucide-react/dist/esm/icons/lock'
+
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui/EmptyState'
 import { useContacts } from '../store/ContactsContext'
 import { useToast } from '../store/ToastContext'
+import { ComplianceSkeleton } from './compliance/ComplianceSkeleton'
 import './Compliance.css'
 
 export default function Compliance() {
-  const { contacts, blockContact, unblockContact } = useContacts()
+  const { contacts, loading, blockContact, unblockContact } = useContacts()
   const { toast } = useToast()
   const [search, setSearch] = useState('')
   const [filterMode, setFilterMode] = useState('all') // all, opted_in, opted_out, blocklisted
@@ -44,13 +55,13 @@ export default function Compliance() {
     
     if (search) {
       const q = search.toLowerCase()
-      list = list.filter(c => c.name?.toLowerCase().includes(q) || c.phone?.includes(q))
+      list = list.filter(c => (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q))
     }
-    return list.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    return [...list].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
   }, [contacts, filterMode, search])
 
   // CSV Import handler
-  const handleFileUpload = async (e) => {
+  const handleFileUpload = useCallback(async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     setIsImporting(true)
@@ -83,7 +94,7 @@ export default function Compliance() {
       }).filter(c => !!c.phone)
 
       try {
-        const res = await fetch('http://localhost:3001/api/contacts/import', {
+        const res = await fetch('http://127.0.0.1:3001/api/contacts/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contacts: parsedContacts })
@@ -102,9 +113,9 @@ export default function Compliance() {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
     reader.readAsText(file)
-  }
+  }, [toast])
 
-  const exportCsv = () => {
+  const exportCsv = useCallback(() => {
     let csv = 'Name,Phone,Opt-In Status,Method,Blocklisted,Opt-Out Reason\n'
     filtered.forEach(c => {
       csv += `"${c.name}","${c.phone}","${c.optInStatus}","${c.optInMethod || ''}","${c.isBlocklisted}","${c.optOutReason || ''}"\n`
@@ -115,7 +126,7 @@ export default function Compliance() {
     a.href = url
     a.download = `compliance_export_${new Date().toISOString().split('T')[0]}.csv`
     a.click()
-  }
+  }, [filtered])
 
   const getStatusChip = (c) => {
     if (c.isBlocklisted) return <span className="comp-chip chip-block"><Ban size={12}/> Blocklisted</span>
@@ -123,6 +134,8 @@ export default function Compliance() {
     if (c.optInStatus === 'opted_out') return <span className="comp-chip chip-out"><ShieldAlert size={12}/> Opted Out</span>
     return <span className="comp-chip chip-unknown"><AlertCircle size={12}/> Unknown</span>
   }
+
+  if (loading) return <ComplianceSkeleton />
 
   return (
     <div className="page fade-in compliance-page">

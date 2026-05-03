@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Menu, X } from 'lucide-react'
-import { Sidebar } from './Sidebar'
+import Menu from 'lucide-react/dist/esm/icons/menu'
+import X from 'lucide-react/dist/esm/icons/x'
 import { CommandStrip } from './CommandStrip'
 import './AppLayout.css'
+
+const Sidebar = React.lazy(() => import('./Sidebar').then(m => ({ default: m.Sidebar })))
 
 export function AppLayout({ children }) {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
@@ -40,13 +42,15 @@ export function AppLayout({ children }) {
         </header>
       )}
 
-      <Sidebar 
-        onExpand={setIsSidebarExpanded} 
-        onLock={setIsSidebarLocked}
-        isMobile={isMobile}
-        isOpen={showMobileMenu}
-        onClose={() => setShowMobileMenu(false)}
-      />
+      <React.Suspense fallback={<div className="sidebar-placeholder" />}>
+        <Sidebar 
+          onExpand={setIsSidebarExpanded} 
+          onLock={setIsSidebarLocked}
+          isMobile={isMobile}
+          isOpen={showMobileMenu}
+          onClose={() => setShowMobileMenu(false)}
+        />
+      </React.Suspense>
 
       {isMobile && showMobileMenu && (
         <div className="mobile-backdrop" onClick={() => setShowMobileMenu(false)} />
