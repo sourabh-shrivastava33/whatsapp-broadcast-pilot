@@ -1,17 +1,15 @@
 import React, { memo, useMemo } from 'react'
-import CheckCheck from 'lucide-react/dist/esm/icons/check-check'
-import Play from 'lucide-react/dist/esm/icons/play'
-import FileText from 'lucide-react/dist/esm/icons/file-text'
-import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check'
-import ImageIcon from 'lucide-react/dist/esm/icons/image'
-import VideoIcon from 'lucide-react/dist/esm/icons/video'
 import { formatWhatsAppText } from '../../utils/richTextParser'
+import { 
+  CheckCheck, Play, FileText, ShieldCheck, Image as ImageIcon, 
+  Video as VideoIcon, Camera, Plus, Wifi, Signal, Battery, MoreVertical
+} from 'lucide-react'
 import './WhatsAppPreview.css'
 
 function replaceSamples(text, samples) {
   if (!text) return ''
   return text.replace(/\{\{(\d+)\}\}/g, (match, num) => {
-    return samples[num] ? `[${samples[num]}]` : match
+    return samples[num] || match
   })
 }
 
@@ -23,7 +21,8 @@ export const WhatsAppPreview = memo(({
   sampleValues = {},
   headerType = 'TEXT',
   mediaUrl = '',
-  limitedTimeOffer = null
+  limitedTimeOffer = null,
+  variant
 }) => {
   const previewBody = useMemo(() => 
     body ? formatWhatsAppText(replaceSamples(body, sampleValues)) : null,
@@ -45,18 +44,43 @@ export const WhatsAppPreview = memo(({
   return (
     <div className="wa-preview-shell">
       <div className="wa-preview-phone">
-        {/* Status bar */}
+        {/* Hardware Buttons */}
+        <div className="wa-hw-silent"></div>
+        <div className="wa-hw-vol-up"></div>
+        <div className="wa-hw-vol-down"></div>
+        <div className="wa-hw-power"></div>
+
+        {/* Modern Status bar with Notch/Dynamic Island */}
+        <div className="wa-phone-status-bar">
+          <div className="wa-status-left">9:41</div>
+          <div className="wa-dynamic-island">
+            <div className="wa-island-inner" />
+          </div>
+          <div className="wa-status-right">
+            <Signal size={12} strokeWidth={2.5} />
+            <Wifi size={12} strokeWidth={2.5} />
+            <Battery size={14} strokeWidth={2} />
+          </div>
+        </div>
+
+        {/* WhatsApp App Header */}
         <div className="wa-phone-bar">
           <div className="wa-phone-bar-left">
             <div className="wa-phone-back">‹</div>
-            <div className="wa-phone-avatar" />
+            <div className="wa-phone-avatar-wrapper">
+              <div className="wa-phone-avatar" />
+              <div className="wa-online-indicator" />
+            </div>
             <div className="wa-phone-name-group">
-              <div className="wa-phone-name">Business Name</div>
-              <ShieldCheck size={12} className="wa-verified-badge" />
+              <div className="wa-phone-name-row">
+                <span className="wa-phone-name">Business Account</span>
+                <ShieldCheck size={13} fill="var(--wa-verified-blue)" stroke="white" className="wa-verified-badge" />
+              </div>
+              <div className="wa-phone-status">online</div>
             </div>
           </div>
           <div className="wa-phone-icons">
-            <span className="wa-icon-more">⋮</span>
+            <MoreVertical size={18} />
           </div>
         </div>
 
@@ -126,15 +150,16 @@ export const WhatsAppPreview = memo(({
               {buttons.length > 0 && (
                 <div className="wa-bubble-buttons">
                   {buttons.map((btn, i) => {
-                    let icon = null;
-                    if (btn.type === 'PHONE_NUMBER') icon = '📞 ';
-                    if (btn.type === 'URL') icon = '🔗 ';
-                    if (btn.type === 'CATALOG') icon = '🛒 ';
-                    if (btn.type === 'OTP') icon = '📋 ';
+                    let Icon = null;
+                    if (btn.type === 'PHONE_NUMBER') Icon = () => <span style={{ marginRight: '6px' }}>📞</span>;
+                    if (btn.type === 'URL') Icon = () => <span style={{ marginRight: '6px' }}>🔗</span>;
+                    if (btn.type === 'CATALOG') Icon = () => <span style={{ marginRight: '6px' }}>🛒</span>;
+                    if (btn.type === 'OTP') Icon = () => <span style={{ marginRight: '6px' }}>📋</span>;
                     
                     return (
                       <button key={i} className="wa-bubble-btn">
-                        {icon}{btn.text || (btn.type === 'OTP' ? 'Copy Code' : 'Button')}
+                        {Icon && <Icon />}
+                        {btn.text || (btn.type === 'OTP' ? 'Copy Code' : 'Button')}
                       </button>
                     );
                   })}
@@ -148,10 +173,19 @@ export const WhatsAppPreview = memo(({
           )}
         </div>
 
-        {/* Input bar */}
+        {/* Realistic Input bar */}
         <div className="wa-phone-input-bar">
-          <div className="wa-phone-input-field">Type a message</div>
-          <div className="wa-phone-send">➤</div>
+          <Plus size={20} className="wa-input-icon" />
+          <div className="wa-phone-input-field">
+            <span>Message</span>
+            <div className="wa-input-right-icons">
+              <FileText size={16} />
+              <Camera size={16} />
+            </div>
+          </div>
+          <div className="wa-phone-send">
+             <Play size={14} fill="currentColor" style={{ marginLeft: '2px' }} />
+          </div>
         </div>
       </div>
     </div>

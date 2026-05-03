@@ -15,7 +15,6 @@ const TemplateBuilder = React.lazy(() => import('./pages/TemplateBuilder'))
 const Broadcast = React.lazy(() => import('./pages/Broadcast'))
 const BroadcastDetail = React.lazy(() => import('./pages/BroadcastDetail'))
 const Compliance = React.lazy(() => import('./pages/Compliance'))
-const HealthDashboard = React.lazy(() => import('./pages/HealthDashboard'))
 const Inbox = React.lazy(() => import('./pages/Inbox'))
 const Webhooks = React.lazy(() => import('./pages/Webhooks'))
 const MediaLibrary = React.lazy(() => import('./pages/MediaLibrary'))
@@ -47,7 +46,6 @@ export default function App() {
           <Route path="/broadcast" element={<Broadcast />} />
           <Route path="/broadcast/:id" element={<BroadcastDetail />} />
           <Route path="/compliance" element={<Compliance />} />
-          <Route path="/health" element={<HealthDashboard />} />
             </Routes>
           </Suspense>
         </AppLayout>

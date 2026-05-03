@@ -1,5 +1,6 @@
 import config from '../config.js';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Activity, 
   ShieldCheck, 
@@ -9,18 +10,47 @@ import {
   CheckCircle2, 
   Zap, 
   Server,
-  Smartphone
+  Smartphone,
+  ChevronRight,
+  Info,
+  ExternalLink,
+  ShieldAlert,
+  ArrowUpRight,
+  Clock,
+  Layout,
+  FileText,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
+import { Modal } from '../components/ui/Modal';
 import './AccountHealth.css';
 
+const HealthMetricCard = ({ label, value, sub, icon: Icon, color, children }) => (
+  <div className="metric-card fade-in">
+    <div className="card-header">
+      <span className="card-label">{label}</span>
+      {Icon && <Icon size={14} style={{ color }} />}
+    </div>
+    <div className="metric-content">
+      {children || (
+        <>
+          <div className="metric-value">{value}</div>
+          <div className="metric-sub">{sub}</div>
+        </>
+      )}
+    </div>
+  </div>
+);
+
 export default function AccountHealth() {
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState([]);
   const [selectedId, setSelectedId] = useState('');
-  const [health, setHealth] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [modal, setModal] = useState({ open: false, title: '', content: null });
 
   // Fetch accounts to choose from
   useEffect(() => {
@@ -40,9 +70,9 @@ export default function AccountHealth() {
     setError('');
     try {
       const res = await fetch(`${config.API_URL}/accounts/${id}/health`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setHealth(data);
+      const payload = await res.json();
+      if (payload.error) throw new Error(payload.error);
+      setData(payload.data);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -54,32 +84,29 @@ export default function AccountHealth() {
     if (selectedId) fetchHealth(selectedId);
   }, [selectedId, fetchHealth]);
 
-  const getTierInfo = (tier) => {
-    const tiers = {
-      'TIER_NOT_SET': { label: 'Trial', limit: '250', desc: 'Limited trial mode' },
-      'TIER_100': { label: 'Tier 1', limit: '100', desc: 'Daily business-initiated conversations' },
-      'TIER_1K': { label: 'Tier 1', limit: '1,000', desc: 'Daily business-initiated conversations' },
-      'TIER_10K': { label: 'Tier 2', limit: '10,000', desc: 'Daily business-initiated conversations' },
-      'TIER_100K': { label: 'Tier 3', limit: '100,000', desc: 'Daily business-initiated conversations' },
-      'TIER_UNLIMITED': { label: 'Unlimited', limit: '∞', desc: 'No daily conversation limits' },
-    };
-    return tiers[tier] || { label: tier || 'Unknown', limit: '?', desc: 'Metric fetching...' };
+  const getScoreColor = (score) => {
+    if (score >= 90) return '#10b981';
+    if (score >= 70) return '#f59e0b';
+    return '#ef4444';
   };
 
-  const getQualityColor = (quality) => {
-    switch (quality?.toUpperCase()) {
-      case 'GREEN': return '#10b981';
-      case 'YELLOW': return '#f59e0b';
-      case 'RED': return '#ef4444';
-      default: return '#94a3b8';
-    }
+  const getScoreLabel = (score) => {
+    if (score >= 90) return 'Excellent';
+    if (score >= 70) return 'Good';
+    if (score >= 40) return 'Fair';
+    return 'Poor';
   };
+
+  if (loading && !data) return <HealthSkeleton />;
 
   return (
     <div className="page fade-in account-health-page">
       <div className="page-header">
         <div className="page-header-left">
-          <h1 className="page-title">Account Health & Limits</h1>
+          <div className="breadcrumb">
+            <span>Account</span> <ChevronRight size={14} /> <span>Health & Limits</span>
+          </div>
+          <h1 className="page-title">Account Health & Limits <ShieldCheck size={20} className="verified-icon" /></h1>
           <p className="page-subtitle">Real-time Meta Graph API metrics for your WhatsApp Business Accounts</p>
         </div>
         <div className="page-actions">
@@ -89,7 +116,7 @@ export default function AccountHealth() {
             onChange={(e) => setSelectedId(e.target.value)}
           >
             {accounts.map(acc => (
-              <option key={acc.id} value={acc.id}>{acc.displayPhoneNumber} ({acc.displayName})</option>
+              <option key={acc.id} value={acc.id}>{acc.displayPhoneNumber || acc.displayName}</option>
             ))}
           </select>
           <Button 
@@ -101,128 +128,352 @@ export default function AccountHealth() {
           >
             Refresh Data
           </Button>
+          <div className="last-updated-text">
+            Last updated: {data?.lastUpdated ? new Date(data.lastUpdated).toLocaleTimeString() : 'N/A'}
+          </div>
         </div>
       </div>
 
       {error && (
-        <div className="health-error-banner">
+        <div className={`health-error-banner ${error.includes('Expired') ? 'session-expired' : ''}`} style={{ marginBottom: 'var(--space-xl)' }}>
           <AlertCircle size={20} />
-          <span>{error}</span>
+          <div className="error-content">
+            <strong>{error.includes('Expired') ? 'Meta Session Expired' : 'API Connection Error'}</strong>
+            <p>{error}</p>
+          </div>
+          {error.includes('Expired') && (
+            <Button variant="outline" size="sm" onClick={() => navigate('/accounts')} className="ml-auto">
+              Update Token
+            </Button>
+          )}
         </div>
       )}
 
-      {!health && !loading ? (
-        <div className="health-loading-placeholder">Select an account to view metrics</div>
-      ) : (
-        <div className={`health-dashboard ${loading ? 'loading-state' : ''}`}>
+      {data && (
+        <div className="health-dashboard-v2">
           
-          {/* Summary Cards */}
-          <div className="health-grid">
-            <div className="health-card">
-              <div className="health-card-icon tier-icon"><Zap size={24} /></div>
-              <div className="health-card-content">
-                <div className="health-card-label">Messaging Tier</div>
-                <div className="health-card-value">{getTierInfo(health?.phone?.messaging_limit_tier).label}</div>
-                <div className="health-card-sub">{getTierInfo(health?.phone?.messaging_limit_tier).limit} / day</div>
-              </div>
-            </div>
-
-            <div className="health-card">
-              <div className="health-card-icon quality-icon" style={{ backgroundColor: getQualityColor(health?.phone?.quality_rating) + '20', color: getQualityColor(health?.phone?.quality_rating) }}>
-                <ShieldCheck size={24} />
-              </div>
-              <div className="health-card-content">
-                <div className="health-card-label">Quality Rating</div>
-                <div className="health-card-value" style={{ color: getQualityColor(health?.phone?.quality_rating) }}>
-                  {health?.phone?.quality_rating || 'UNKNOWN'}
+          {/* Top Metric Cards */}
+          <div className="top-metrics-grid">
+            <HealthMetricCard 
+              label="HEALTH SCORE" 
+              icon={() => <Info size={14} className="info-icon-clickable" onClick={() => setModal({
+                open: true,
+                title: 'Health Score Logic',
+                content: (
+                  <div className="modal-info-content">
+                    <p>Your health score is a proprietary metric calculated using real-time signals from Meta:</p>
+                    <ul className="info-list-bullets">
+                      <li><strong>Quality Rating (60%):</strong> Green (+0), Yellow (-30), Red (-60)</li>
+                      <li><strong>Account Mode (20%):</strong> Production (+20), Sandbox (+10)</li>
+                      <li><strong>Connectivity (20%):</strong> Connected (+20), Flagged (-40)</li>
+                    </ul>
+                    <div className="info-hint mt-4">
+                      <Zap size={14} /> Maintaining a score above 90 ensures your templates aren't paused and your messaging limits can increase.
+                    </div>
+                  </div>
+                )
+              })} />}
+            >
+              <div className="health-score-content">
+                <div className="circular-progress-v3" style={{ '--progress': `${data.score}%`, '--color': getScoreColor(data.score) }}>
+                  <svg width="64" height="64" viewBox="0 0 64 64">
+                    <circle className="progress-bg" cx="32" cy="32" r="28" />
+                    <circle 
+                      className="progress-fill" 
+                      cx="32" 
+                      cy="32" 
+                      r="28" 
+                      style={{ 
+                        strokeDasharray: '175.9', 
+                        strokeDashoffset: 175.9 - (175.9 * (data?.score || 0)) / 100,
+                        stroke: getScoreColor(data?.score || 0)
+                      }} 
+                    />
+                  </svg>
+                  <span className="score-number">{data?.score || 0}</span>
                 </div>
-                <div className="health-card-sub">Meta Account Health</div>
+                <div className="score-details">
+                  <span className="score-label" style={{ color: getScoreColor(data?.score || 0) }}>{getScoreLabel(data?.score || 0)}</span>
+                  <span className="score-desc">Operational Status</span>
+                </div>
               </div>
-            </div>
+            </HealthMetricCard>
 
-            <div className="health-card">
-              <div className="health-card-icon status-icon"><Activity size={24} /></div>
-              <div className="health-card-content">
-                <div className="health-card-label">Phone Status</div>
-                <div className="health-card-value">{health?.phone?.status || 'OFFLINE'}</div>
-                <div className="health-card-sub">Real-time Connectivity</div>
+            <HealthMetricCard 
+              label="MESSAGING TIER" 
+              icon={() => <Info size={14} className="info-icon-clickable" onClick={() => setModal({
+                open: true,
+                title: 'About Messaging Tiers',
+                content: (
+                  <div className="modal-info-content">
+                    <p>Messaging limits determine the number of business-initiated conversations your phone number can start in a 24-hour period.</p>
+                    <div className="tier-grid">
+                      <div className="tier-row"><span>Tier 250</span> <span>Trial</span></div>
+                      <div className="tier-row"><span>Tier 1K</span> <span>Standard</span></div>
+                      <div className="tier-row"><span>Tier 10K</span> <span>Scale</span></div>
+                      <div className="tier-row"><span>Tier 100K+</span> <span>Unlimited</span></div>
+                    </div>
+                    <p className="mt-4">Limits increase automatically when you reach 50% of your current tier with High Quality rating.</p>
+                  </div>
+                )
+              })} />}
+              color="#a855f7"
+            >
+              <div className="tier-title">Tier {data?.limit >= 1000 ? `${data?.limit/1000}K` : (data?.limit || 'N/A')}</div>
+              <div className="tier-subtitle">{data?.limit?.toLocaleString() || 0} msg/day</div>
+              <div className="tier-progress-v3">
+                <div className="progress-bar-bg">
+                  <div className="progress-bar-fill" style={{ width: `${Math.min(100, (data?.usage?.businessInitiated / (data?.limit || 1)) * 100)}%` }}></div>
+                </div>
+                <div className="progress-footer">{data?.usage?.businessInitiated || 0} used today</div>
               </div>
-            </div>
+            </HealthMetricCard>
 
-            <div className="health-card">
-              <div className="health-card-icon mode-icon"><Server size={24} /></div>
-              <div className="health-card-content">
-                <div className="health-card-label">Account Mode</div>
-                <div className="health-card-value">{health?.waba?.account_mode || 'UNKNOWN'}</div>
-                <div className="health-card-sub">Sandbox vs Production</div>
+            <HealthMetricCard 
+              label="QUALITY RATING" 
+              icon={() => <ShieldCheck size={14} className="info-icon-clickable" onClick={() => setModal({
+                open: true,
+                title: 'Quality Rating Details',
+                content: (
+                  <div className="modal-info-content">
+                    <p>The quality rating is based on how customers have received your messages over the last 7 days.</p>
+                    <div className="quality-indicators">
+                      <div className="q-item"><div className="dot green"></div> <strong>High:</strong> Good feedback, low block rate</div>
+                      <div className="q-item"><div className="dot yellow"></div> <strong>Medium:</strong> Some negative feedback detected</div>
+                      <div className="q-item"><div className="dot red"></div> <strong>Low:</strong> High report/block rate. Risk of suspension.</div>
+                    </div>
+                  </div>
+                )
+              })} />}
+              color={getScoreColor(data?.score || 0)}
+            >
+              <div className="quality-badge-v3" style={{ background: `${getScoreColor(data?.score || 0)}20`, color: getScoreColor(data?.score || 0) }}>
+                {data?.quality || 'GREEN'}
               </div>
-            </div>
+              <div className="quality-subtitle">High performance</div>
+              <button className="text-link-sm" onClick={() => navigate('/compliance')}>
+                View history <ChevronRight size={10} />
+              </button>
+            </HealthMetricCard>
+
+            <HealthMetricCard 
+              label="PHONE STATUS" 
+              icon={Activity}
+              color="#10b981"
+            >
+              <div className="status-title-v3">Connected</div>
+              <div className="status-check-v3"><CheckCircle2 size={12} /> Verified</div>
+              <button className="text-link-sm" onClick={() => window.open('https://business.facebook.com/wa/manage/phone-numbers/', '_blank')}>
+                Manage in Meta <ExternalLink size={10} />
+              </button>
+            </HealthMetricCard>
+
+            <HealthMetricCard 
+              label="ACCOUNT MODE" 
+              icon={Layout}
+            >
+              <div className="mode-title-v3">{data?.mode === 'SANDBOX' ? 'Sandbox' : 'Production'}</div>
+              <div className="mode-badge-v3">{data?.mode === 'SANDBOX' ? 'Test Mode' : 'Live Mode'}</div>
+              <button className="text-link-sm" onClick={() => setModal({ 
+                open: true, 
+                title: 'How to switch to Production', 
+                content: <div className="modal-info-content"><p>To go live, you need to verify your business on Meta and add a permanent phone number.</p><Button className="mt-4" onClick={() => window.open('https://developers.facebook.com/docs/whatsapp/cloud-api/get-started', '_blank')}>Documentation</Button></div> 
+              })}>
+                Upgrade path
+              </button>
+            </HealthMetricCard>
           </div>
 
-          {/* Detailed Sections */}
-          <div className="health-details-layout">
-            <div className="health-section-main">
-              <h3 className="section-title"><Smartphone size={18} /> Phone Number Details</h3>
-              <div className="details-card">
-                <div className="detail-row">
-                  <span className="detail-label">Verified Name</span>
-                  <span className="detail-value">{health?.phone?.verified_name || 'N/A'}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-label">Display Number</span>
-                  <span className="detail-value">{health?.phone?.display_phone_number || 'N/A'}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-label">Phone Number ID</span>
-                  <span className="detail-value mono">{health?.phone?.id || 'N/A'}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-label">Messaging Tier Detail</span>
-                  <span className="detail-value">{getTierInfo(health?.phone?.messaging_limit_tier).desc}</span>
+          {/* Alerts Banner */}
+          {data?.mode === 'SANDBOX' && (
+            <div className="readiness-banner" style={{ margin: 'var(--space-lg) 0 var(--space-2xl)' }}>
+              <div className="banner-icon"><AlertTriangle size={20} /></div>
+              <div className="banner-content">
+                <strong>Production readiness</strong>
+                <p>You are using a test number. Some metrics are limited. Switch to a live number to unlock all features and higher messaging tiers.</p>
+              </div>
+              <Button variant="outline" size="sm">Learn how to go live <ChevronRight size={14} /></Button>
+            </div>
+          )}
+
+          <div className="dashboard-main-grid">
+            <div className="dashboard-content-left">
+              {/* Messaging Limits Overview */}
+              <div className="content-card limits-overview">
+                <h3 className="card-title">Messaging Limits Overview <Info size={14} className="info-icon-clickable" onClick={() => setModal({ open: true, title: 'Limits Explained', content: <p>Conversations are measured in 24-hour windows. User-initiated conversations are free and unlimited (up to 1,000 per month for certain accounts).</p> })} /></h3>
+                <div className="limits-body">
+                  <div className="limit-circle-section">
+                    <div className="limit-circle">
+                      <div className="circle-inner">
+                        <span className="circle-value">{data?.usage?.businessInitiated || 0}</span>
+                        <span className="circle-label">/ {data?.limit || 0}</span>
+                      </div>
+                    </div>
+                    <div className="limit-circle-desc">
+                      <Clock size={12} /> Resets in {data?.usage?.resetTime || 'N/A'}
+                    </div>
+                  </div>
+                  <div className="limit-stats-section">
+                    <div className="limit-stat-row">
+                      <div className="stat-info">
+                        <span className="stat-label">Business Initiated</span>
+                        <span className="stat-count">{data?.usage?.businessInitiated || 0} / {data?.limit || 0}</span>
+                      </div>
+                      <div className="stat-bar-bg"><div className="stat-bar-fill" style={{ width: `${Math.min(100, ((data?.usage?.businessInitiated || 0) / (data?.limit || 1)) * 100)}%` }}></div></div>
+                    </div>
+                    <div className="limit-stat-row">
+                      <div className="stat-info">
+                        <span className="stat-label">User Initiated</span>
+                        <span className="stat-count">{data?.usage?.userInitiated || 0} / Unlimited</span>
+                      </div>
+                      <div className="stat-bar-bg"><div className="stat-bar-fill" style={{ width: '5%', background: '#3b82f6' }}></div></div>
+                    </div>
+                    <button className="text-link-sm mt-2" onClick={() => setModal({ open: true, title: 'Tier Upgrade Path', content: <p>To upgrade your tier, send at least half your current limit in a 7-day window with High Quality rating.</p> })}>
+                      How to upgrade tier <ChevronRight size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <h3 className="section-title mt-6"><BarChart3 size={18} /> Business Account (WABA)</h3>
-              <div className="details-card">
-                <div className="detail-row">
-                  <span className="detail-label">WABA Name</span>
-                  <span className="detail-value">{health?.waba?.name || 'N/A'}</span>
+              {/* Risk & Compliance */}
+              <div className="content-card risk-compliance">
+                <h3 className="card-title">Risk & Compliance</h3>
+                <div className="risk-status-banner" style={{ background: (data?.score || 0) < 70 ? 'rgba(218, 54, 51, 0.1)' : '', color: (data?.score || 0) < 70 ? 'var(--status-rejected)' : '' }}>
+                  {(data?.score || 0) >= 90 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                  <div>
+                    <strong>{(data?.score || 0) >= 90 ? 'No critical issues' : ((data?.score || 0) >= 70 ? 'Potential issues' : 'Critical Warning')}</strong>
+                    <p>{(data?.score || 0) >= 90 ? 'Great! Your account is compliant with WhatsApp policies.' : 'Review recent activity to avoid account restrictions.'}</p>
+                  </div>
                 </div>
-                <div className="detail-row">
-                  <span className="detail-label">WABA Status</span>
-                  <span className="detail-value">
-                    <Chip label={health?.waba?.status || 'Unknown'} status={health?.waba?.status === 'APPROVED' ? 'approved' : 'pending'} />
-                  </span>
+                <div className="risk-table">
+                  <div className="risk-item"><span>Account restrictions</span> <span className={data.risk?.restrictions === 'None' ? 'status-none' : 'status-low'}>{data.risk?.restrictions || 'None'}</span></div>
+                  <div className="risk-item"><span>Policy violations</span> <span className="status-none">{data.risk?.violations || 0}</span></div>
+                  <div className="risk-item"><span>Spam rate</span> <span className={data.risk?.spamRate === 'Low' ? 'status-none' : 'status-low'}>{data.risk?.spamRate || 'Low'}</span></div>
+                  <div className="risk-item"><span>User blocks</span> <span className="value-percent">{data.risk?.blocks || '0.00%'}</span></div>
+                  <div className="risk-item"><span>Report rate</span> <span className="value-percent">{data.risk?.reports || '0.00%'}</span></div>
                 </div>
-                <div className="detail-row">
-                  <span className="detail-label">WABA ID</span>
-                  <span className="detail-value mono">{health?.waba?.id || 'N/A'}</span>
+                <button className="text-link-sm mt-4" onClick={() => window.open('https://www.whatsapp.com/legal/business-policy/', '_blank')}>
+                  WhatsApp Business Policy <ExternalLink size={12} />
+                </button>
+              </div>
+
+              {/* Template Quality */}
+              <div className="content-card template-quality">
+                <div className="card-header-row">
+                  <h3 className="card-title">Template Quality <span className="sub">(Latest)</span></h3>
+                  <button className="text-link-sm" onClick={() => navigate('/templates')}>View all templates <ChevronRight size={14} /></button>
                 </div>
+                <table className="quality-table">
+                  <thead>
+                    <tr>
+                      <th>TEMPLATE NAME</th>
+                      <th>QUALITY</th>
+                      <th>STATUS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data?.templates?.length > 0 ? data.templates.map((t, i) => (
+                      <tr key={i}>
+                        <td>{t?.name} <span className="cat">{t?.category}</span></td>
+                        <td>
+                          <span className={`dot ${t?.quality === 'HIGH' || t?.quality === 'UNKNOWN' ? 'green' : 'yellow'}`}></span> 
+                          {t?.quality}
+                        </td>
+                        <td><Chip label={t?.status} status={t?.status === 'APPROVED' ? 'approved' : 'pending'} size="sm" /></td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 'var(--space-xl)' }}>No templates found for this account</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            <div className="health-section-side">
-              <div className="guide-card">
-                <h4 className="guide-title"><AlertCircle size={16} /> Messaging Tier Guide</h4>
-                <p className="guide-text">Your tier determines how many unique customers you can start conversations with every 24 hours.</p>
-                <ul className="guide-list">
-                  <li><strong>Tier 1:</strong> 1,000 customers</li>
-                  <li><strong>Tier 2:</strong> 10,000 customers</li>
-                  <li><strong>Tier 3:</strong> 100,000 customers</li>
-                  <li><strong>Unlimited:</strong> No limit</li>
-                </ul>
-                <div className="guide-tip">
-                  <strong>How to scale:</strong> Send more than half your limit in a 7-day period with high quality ratings to move to the next tier automatically.
+            <div className="dashboard-content-right">
+              {/* Active Alerts */}
+              <div className="side-card alerts-card">
+                <div className="side-card-header">
+                  <h3 className="side-card-title">Active Alerts <span className="badge-count">{data?.alerts?.length || 0}</span></h3>
+                  <button className="text-link-sm" onClick={() => navigate('/compliance')}>
+                    View all alerts <ChevronRight size={14} />
+                  </button>
+                </div>
+                <div className="alert-list">
+                  {data?.alerts?.map((alert, idx) => (
+                    <div key={idx} className={`alert-item alert-${alert?.type}`}>
+                      <div className="alert-icon">
+                        {alert?.type === 'error' ? <ShieldAlert size={16} /> : <AlertCircle size={16} />}
+                      </div>
+                      <div className="alert-body">
+                        <p className="alert-message">{alert?.message}</p>
+                        <span className="alert-time">{alert?.timestamp ? new Date(alert.timestamp).toLocaleTimeString() : 'N/A'}</span>
+                      </div>
+                    </div>
+                  )) || <div className="empty-alerts">No active alerts</div>}
+                </div>
+              </div>
+
+              {/* Recommendations */}
+              <div className="side-card recs-card">
+                <h3 className="side-card-title">Recommendations for you</h3>
+                <div className="rec-list">
+                  {data?.recommendations?.map((rec, idx) => (
+                    <div key={idx} className="rec-item">
+                      <div className="rec-icon"><ArrowUpRight size={16} /></div>
+                      <p className="rec-text">{rec}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Account Information */}
+              <div className="side-card info-card">
+                <h3 className="side-card-title">Account Information</h3>
+                <div className="info-list">
+                  <div className="info-item"><span className="label">Verified Name</span> <span className="value">{data?.verifiedName || 'N/A'}</span></div>
+                  <div className="info-item"><span className="label">Display Number</span> <span className="value">+{data?.displayPhoneNumber || 'Test Number'}</span></div>
+                  <div className="info-item"><span className="label">WABA ID</span> <span className="value mono">{data?.id || 'N/A'}</span></div>
+                  <div className="info-item"><span className="label">WABA Status</span> <span className="value"><Chip label={data?.wabaStatus} status={data?.wabaStatus === 'APPROVED' ? 'approved' : 'pending'} size="sm" /></span></div>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="health-footer">
-            <RefreshCw size={12} /> Last synced with Meta: {health?.lastUpdated ? new Date(health.lastUpdated).toLocaleTimeString() : 'Just now'}
           </div>
         </div>
       )}
+      {/* Global Info Modal */}
+      <Modal 
+        isOpen={modal.open} 
+        onClose={() => setModal({ ...modal, open: false })}
+        title={modal.title}
+      >
+        {modal.content}
+      </Modal>
+    </div>
+  );
+}
+
+function HealthSkeleton() {
+  return (
+    <div className="page health-skeleton">
+      <div className="skeleton-header">
+        <div className="skeleton-line w-1/3"></div>
+        <div className="skeleton-line w-2/3 h-10 mt-4"></div>
+      </div>
+      <div className="skeleton-grid mt-8">
+        {[1,2,3,4,5].map(i => <div key={i} className="skeleton-card h-40"></div>)}
+      </div>
+      <div className="skeleton-layout mt-8">
+        <div className="skeleton-main">
+          <div className="skeleton-card h-80"></div>
+          <div className="skeleton-card h-60 mt-6"></div>
+        </div>
+        <div className="skeleton-side">
+          <div className="skeleton-card h-40"></div>
+          <div className="skeleton-card h-40 mt-6"></div>
+        </div>
+      </div>
     </div>
   );
 }

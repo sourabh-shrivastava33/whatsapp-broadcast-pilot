@@ -28,7 +28,8 @@ export function CommandStrip() {
     }
   }, [location.pathname])
 
-  const isFlowPage = demoSteps.some(s => s.path === location.pathname) || location.pathname === '/'
+  // Render universally on all pages for consistency
+  const isFlowPage = true
   if (!isFlowPage) return null
 
   return (
