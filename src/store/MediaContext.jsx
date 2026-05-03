@@ -27,7 +27,7 @@ export function MediaProvider({ children }) {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://127.0.0.1:3001/api/media/upload', {
+      const response = await fetch(`${config.API_URL}/media/upload`, {
         method: 'POST',
         body: formData,
       });

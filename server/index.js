@@ -8,6 +8,7 @@ import path from "path";
 import multer from "multer";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import { createClient } from "@supabase/supabase-js";
 import {
   BROADCAST_STATUS,
   TEMPLATE_STATUS,
@@ -161,18 +162,22 @@ app.use("/uploads", express.static("uploads"));
 // Media Storage Configuration
 // ============================================
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (!fs.existsSync("uploads")) {
-      fs.mkdirSync("uploads");
-    }
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
-});
+// ============================================
+// Media Storage Configuration (Supabase Cloud)
+// ============================================
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY; // Use Secret Key for backend
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("❌ CRITICAL: Supabase credentials missing in .env");
+} else {
+  console.log(`☁️ Supabase Cloud Storage Initialized: ${supabaseUrl}`);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const storage = multer.memoryStorage(); // Stream directly to memory
 
 const upload = multer({
   storage,
@@ -189,27 +194,47 @@ app.post("/api/media/upload", upload.single("file"), async (req, res) => {
   }
 
   try {
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+    const file = req.file;
+    const fileExt = path.extname(file.originalname);
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
+    
+    // 1. Upload to Supabase 'media' bucket
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("media")
+      .upload(fileName, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false
+      });
 
-    // Determine media type based on mimetype
+    if (uploadError) {
+      console.error("Supabase upload error:", uploadError);
+      return res.status(500).json({ error: "Cloud storage upload failed", details: uploadError.message });
+    }
+
+    // 2. Get Public URL
+    const { data: urlData } = supabase.storage.from("media").getPublicUrl(fileName);
+    const fileUrl = urlData.publicUrl;
+
+    // 3. Determine media type based on mimetype
     let type = "DOCUMENT";
-    if (req.file.mimetype.startsWith("image/")) type = "IMAGE";
-    else if (req.file.mimetype.startsWith("video/")) type = "VIDEO";
-    else if (req.file.mimetype.startsWith("audio/")) type = "AUDIO";
+    if (file.mimetype.startsWith("image/")) type = "IMAGE";
+    else if (file.mimetype.startsWith("video/")) type = "VIDEO";
+    else if (file.mimetype.startsWith("audio/")) type = "AUDIO";
 
+    // 4. Save to Database
     const media = await prisma.media.create({
       data: {
         url: fileUrl,
-        filename: req.file.filename,
+        filename: fileName,
         type: type,
-        size: req.file.size,
+        size: file.size,
       },
     });
 
     res.json(media);
   } catch (error) {
-    console.error("Media upload error:", error);
-    res.status(500).json({ error: "Failed to save media record" });
+    console.error("Media processing error:", error);
+    res.status(500).json({ error: "Failed to process media" });
   }
 });
 
@@ -1189,35 +1214,45 @@ app.put("/api/templates/:id", async (req, res) => {
  * Uploads a file to Meta's Resumable Upload API for Templates.
  * Requires the App ID and a specific upload session.
  */
-async function uploadMediaToMeta(filePath, accessToken, appId) {
+/**
+ * Uploads a file (buffer or local path) to Meta's Resumable API for template samples.
+ * Returns the session handle 'h'.
+ */
+async function uploadMediaToMeta(source, accessToken, appId) {
   try {
-    const stats = fs.statSync(filePath);
-    const fileContent = fs.readFileSync(filePath);
-    const mimeType =
-      path.extname(filePath) === ".png"
-        ? "image/png"
-        : path.extname(filePath) === ".jpg" ||
-            path.extname(filePath) === ".jpeg"
-          ? "image/jpeg"
-          : path.extname(filePath) === ".mp4"
-            ? "video/mp4"
-            : "application/pdf";
+    let fileContent;
+    let fileName = "sample_media";
+    let mimeType = "application/octet-stream";
 
-    // 1. Start Upload Session
-    const startRes = await fetchWithTimeout(
-      `${META_API_BASE_URL}/${META_API_VERSION}/${appId}/uploads?file_length=${stats.size}&file_type=${mimeType}`,
+    if (Buffer.isBuffer(source)) {
+      fileContent = source;
+    } else if (typeof source === 'string' && (source.startsWith('http') || source.startsWith('https'))) {
+      const res = await fetch(source);
+      if (!res.ok) throw new Error(`Failed to fetch remote media: ${res.statusText}`);
+      fileContent = Buffer.from(await res.arrayBuffer());
+      fileName = source.split('/').pop() || fileName;
+      mimeType = res.headers.get('content-type') || mimeType;
+    } else {
+      fileContent = fs.readFileSync(source);
+      fileName = path.basename(source);
+      const ext = path.extname(source).toLowerCase();
+      mimeType = ext === '.png' ? 'image/png' : (ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : (ext === '.mp4' ? 'video/mp4' : 'application/pdf'));
+    }
+
+    // 1. Create Upload Session
+    const sessionRes = await fetchWithTimeout(
+      `${META_API_BASE_URL}/${META_API_VERSION}/${appId}/uploads?file_length=${fileContent.length}&file_type=${mimeType}`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}` },
-      },
+      }
     );
-    const startData = await startRes.json();
-    if (!startRes.ok)
-      throw new Error(startData.error?.message || "Failed to start upload");
+    const sessionData = await sessionRes.json();
+    if (!sessionRes.ok) throw new Error(sessionData.error?.message || "Failed to create upload session");
 
-    const sessionId = startData.id;
+    const sessionId = sessionData.id;
 
-    // 2. Upload the file data
+    // 2. Upload Content
     const uploadRes = await fetchWithTimeout(
       `${META_API_BASE_URL}/${META_API_VERSION}/${sessionId}`,
       {
@@ -1228,15 +1263,14 @@ async function uploadMediaToMeta(filePath, accessToken, appId) {
           "Content-Type": "application/octet-stream",
         },
         body: fileContent,
-      },
+      }
     );
     const uploadData = await uploadRes.json();
-    if (!uploadRes.ok)
-      throw new Error(uploadData.error?.message || "Failed to upload media");
+    if (!uploadRes.ok) throw new Error(uploadData.error?.message || "Failed to upload media content");
 
     return uploadData.h; // The handle
   } catch (error) {
-    console.error("❌ Media Upload Failed:", error.message);
+    console.error("❌ Meta Resumable Upload Failed:", error.message);
     throw error;
   }
 }
@@ -1245,29 +1279,53 @@ async function uploadMediaToMeta(filePath, accessToken, appId) {
  * Uploads a file to Meta's Media API for use in direct messages.
  * Returns the media ID.
  */
-async function uploadMessageMediaToMeta(file, accessToken, phoneNumberId) {
+/**
+ * Uploads a file (from multer or a remote URL) to Meta's Media API for direct messages.
+ * Returns the media ID.
+ */
+async function uploadMessageMediaToMeta(source, accessToken, phoneNumberId) {
   try {
     const formData = new FormData();
-    const blob = new Blob([fs.readFileSync(file.path)], {
-      type: file.mimetype,
-    });
-    formData.append("file", blob, file.originalname);
+    let fileContent;
+    let fileName = "broadcast_media";
+    let mimeType = "application/octet-stream";
+
+    if (source && typeof source === 'object' && source.buffer) {
+      // Multer memory file
+      fileContent = source.buffer;
+      fileName = source.originalname;
+      mimeType = source.mimetype;
+    } else if (typeof source === 'string' && (source.startsWith('http') || source.startsWith('https'))) {
+      // Remote URL
+      const res = await fetch(source);
+      if (!res.ok) throw new Error(`Failed to fetch remote media: ${res.statusText}`);
+      fileContent = Buffer.from(await res.arrayBuffer());
+      fileName = source.split('/').pop() || fileName;
+      mimeType = res.headers.get('content-type') || mimeType;
+    } else if (source && source.path) {
+      // Multer disk file (fallback)
+      fileContent = fs.readFileSync(source.path);
+      fileName = source.originalname;
+      mimeType = source.mimetype;
+    } else {
+      throw new Error("Invalid media source for Meta upload");
+    }
+
+    const blob = new Blob([fileContent], { type: mimeType });
+    formData.append("file", blob, fileName);
     formData.append("messaging_product", "whatsapp");
 
     const response = await fetchWithTimeout(
       `${META_API_BASE_URL}/${META_API_VERSION}/${phoneNumberId}/media`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` },
         body: formData,
       },
     );
 
     const data = await response.json();
-    if (!response.ok)
-      throw new Error(data.error?.message || "Meta Media Upload Failed");
+    if (!response.ok) throw new Error(data.error?.message || "Meta Media Upload Failed");
 
     return data.id;
   } catch (error) {
@@ -1315,20 +1373,12 @@ app.post("/api/templates/:id/submit", async (req, res) => {
     // Handle Media Header
     let mediaHandle = null;
     if (sourceTemplate.headerType !== "TEXT" && sourceTemplate.mediaUrl) {
-      // Check if it's a local file
-      if (sourceTemplate.mediaUrl.includes("localhost")) {
-        const fileName = sourceTemplate.mediaUrl.split("/").pop();
-        const filePath = path.join("uploads", fileName);
-        if (fs.existsSync(filePath)) {
-          console.log(`📤 Uploading local media to Meta: ${fileName}`);
-          // Use the first active account's token for the upload
-          mediaHandle = await uploadMediaToMeta(
-            filePath,
-            activeAccounts[0].accessToken,
-            appId,
-          );
-        }
-      }
+      console.log(`📤 Uploading media to Meta for template approval: ${sourceTemplate.mediaUrl}`);
+      mediaHandle = await uploadMediaToMeta(
+        sourceTemplate.mediaUrl,
+        activeAccounts[0].accessToken,
+        appId,
+      );
 
       const headerComp = {
         type: "HEADER",
