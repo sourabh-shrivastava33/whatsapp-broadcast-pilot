@@ -198,6 +198,29 @@
   border-color: var(--accent);
 }
 
+.chip-default {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+}
+
+.chip.removable {
+  padding-right: 8px;
+}
+
+.chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+
+.chip-remove:hover {
+  color: var(--status-rejected);
+}
+
 /* ---------- Table ---------- */
 .table-wrapper {
   overflow-x: auto;

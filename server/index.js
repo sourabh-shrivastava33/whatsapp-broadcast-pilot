@@ -21,12 +21,9 @@ import http from "http";
 import crypto from "crypto";
 import { logger } from "./logger.js";
 import {
-  fetchWithTimeout,
-  logAction,
-  sanitizeAccount,
-  normalizePhone,
   sendSuccess,
   sendError,
+  calculateHash,
 } from "./utils.js";
 import { initSocket, getIO } from "./socket.js";
 
@@ -189,16 +186,30 @@ const upload = multer({
 // ============================================
 
 app.post("/api/media/upload", upload.single("file"), async (req, res) => {
+  const { correlationId } = req;
   if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
+    return sendError(res, null, "No file uploaded", 400, { correlationId });
   }
 
   try {
     const file = req.file;
+    const { tags, campaign, language, purpose, folderId } = req.body;
+    
+    // 1. Calculate Hash for Duplicate Detection
+    const hash = calculateHash(file.buffer);
+    const existingMedia = await prisma.media.findFirst({
+      where: { metadata: { path: ['hash'], equals: hash } }
+    });
+
+    if (existingMedia) {
+      logger.info(`♻️ Duplicate media detected: ${existingMedia.id}`, { correlationId });
+      return sendSuccess(res, existingMedia);
+    }
+
     const fileExt = path.extname(file.originalname);
     const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
     
-    // 1. Upload to Supabase 'media' bucket
+    // 2. Upload to Supabase 'media' bucket
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("media")
       .upload(fileName, file.buffer, {
@@ -207,45 +218,242 @@ app.post("/api/media/upload", upload.single("file"), async (req, res) => {
       });
 
     if (uploadError) {
-      console.error("Supabase upload error:", uploadError);
-      return res.status(500).json({ error: "Cloud storage upload failed", details: uploadError.message });
+      return sendError(res, uploadError, "Cloud storage upload failed", 500, { correlationId });
     }
 
-    // 2. Get Public URL
+    // 3. Get Public URL
     const { data: urlData } = supabase.storage.from("media").getPublicUrl(fileName);
     const fileUrl = urlData.publicUrl;
 
-    // 3. Determine media type based on mimetype
+    // 4. Determine media type based on mimetype
     let type = "DOCUMENT";
     if (file.mimetype.startsWith("image/")) type = "IMAGE";
     else if (file.mimetype.startsWith("video/")) type = "VIDEO";
     else if (file.mimetype.startsWith("audio/")) type = "AUDIO";
 
-    // 4. Save to Database
+    // 5. Save to Database
     const media = await prisma.media.create({
       data: {
         url: fileUrl,
         filename: fileName,
         type: type,
         size: file.size,
+        tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [],
+        campaign: campaign || null,
+        language: language || null,
+        purpose: purpose || null,
+        folderId: folderId || null,
+        metadata: {
+          hash,
+          mimetype: file.mimetype,
+          originalName: file.originalname
+          // Future: add width, height if image
+        }
       },
     });
 
+    logger.info(`✅ Media uploaded successfully: ${media.id}`, { correlationId });
     res.json(media);
   } catch (error) {
-    console.error("Media processing error:", error);
-    res.status(500).json({ error: "Failed to process media" });
+    return sendError(res, error, "Failed to process media", 500, { correlationId });
   }
 });
 
 app.get("/api/media", async (req, res) => {
   try {
-    const media = await prisma.media.findMany({
-      orderBy: { createdAt: "desc" },
+    const { type, campaign, archived, folderId, page = 1, limit = 20, sort = 'desc', search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const where = {
+      ...(type && type !== 'ALL' && { type }),
+      ...(campaign && { campaign }),
+      ...(folderId && { folderId }),
+      isArchived: archived === 'true',
+      ...(search && {
+        OR: [
+          { filename: { contains: search, mode: 'insensitive' } },
+          { campaign: { contains: search, mode: 'insensitive' } },
+          { tags: { array_contains: search } }
+        ]
+      })
+    };
+
+    const [media, total] = await Promise.all([
+      prisma.media.findMany({
+        where,
+        orderBy: { createdAt: sort },
+        skip,
+        take: parseInt(limit),
+        include: { folder: true }
+      }),
+      prisma.media.count({ where })
+    ]);
+
+    res.json({
+      data: media,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      }
     });
-    res.json(media);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch media library" });
+  }
+});
+
+app.post("/api/media/:id/duplicate", async (req, res) => {
+  const { correlationId } = req;
+  try {
+    const original = await prisma.media.findUnique({ where: { id: req.params.id } });
+    if (!original) return sendError(res, null, "Media not found", 404, { correlationId });
+
+    const copy = await prisma.media.create({
+      data: {
+        ...original,
+        id: undefined,
+        filename: `Copy of ${original.filename}`,
+        createdAt: undefined,
+        updatedAt: undefined,
+        usageCount: 0,
+      }
+    });
+    sendSuccess(res, copy);
+  } catch (error) {
+    sendError(res, error, "Duplication failed", 500, { correlationId });
+  }
+});
+
+app.patch("/api/media/:id/move", async (req, res) => {
+  const { correlationId } = req;
+  try {
+    const { folderId } = req.body;
+    const media = await prisma.media.update({
+      where: { id: req.params.id },
+      data: { folderId: folderId || null }
+    });
+    sendSuccess(res, media);
+  } catch (error) {
+    sendError(res, error, "Move failed", 500, { correlationId });
+  }
+});
+
+app.get("/api/folders", async (req, res) => {
+  try {
+    const folders = await prisma.folder.findMany({
+      include: { _count: { select: { media: true } } },
+      orderBy: { name: 'asc' }
+    });
+    res.json(folders);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch folders" });
+  }
+});
+
+app.post("/api/folders", async (req, res) => {
+  try {
+    const { name, parentId } = req.body;
+    const folder = await prisma.folder.create({
+      data: { name, parentId }
+    });
+    res.json(folder);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to create folder" });
+  }
+});
+
+app.patch("/api/media/:id", async (req, res) => {
+  const { correlationId } = req;
+  try {
+    const { tags, campaign, language, purpose, status, isArchived } = req.body;
+    const media = await prisma.media.update({
+      where: { id: req.params.id },
+      data: {
+        ...(tags && { tags }),
+        ...(campaign !== undefined && { campaign }),
+        ...(language !== undefined && { language }),
+        ...(purpose !== undefined && { purpose }),
+        ...(status && { status }),
+        ...(isArchived !== undefined && { isArchived }),
+      }
+    });
+    sendSuccess(res, media);
+  } catch (error) {
+    sendError(res, error, "Update failed", 500, { correlationId });
+  }
+});
+
+app.post("/api/media/:id/archive", async (req, res) => {
+  const { correlationId } = req;
+  try {
+    const media = await prisma.media.update({
+      where: { id: req.params.id },
+      data: { 
+        isArchived: true,
+        status: 'archived'
+      }
+    });
+    sendSuccess(res, media);
+  } catch (error) {
+    sendError(res, error, "Archive failed", 500, { correlationId });
+  }
+});
+
+app.get("/api/media/:id/usage", async (req, res) => {
+  const { correlationId } = req;
+  try {
+    const media = await prisma.media.findUnique({ where: { id: req.params.id } });
+    if (!media) return sendError(res, null, "Media not found", 404, { correlationId });
+
+    // Find templates using this URL
+    const templates = await prisma.template.findMany({
+      where: { mediaUrl: media.url },
+      select: { id: true, name: true, status: true }
+    });
+
+    // Find chat messages using this URL
+    const messages = await prisma.chatMessage.findMany({
+      where: { mediaUrl: media.url },
+      select: { id: true, contactId: true, timestamp: true },
+      take: 10
+    });
+
+    sendSuccess(res, { templates, recentMessages: messages });
+  } catch (error) {
+    sendError(res, error, "Usage fetch failed", 500, { correlationId });
+  }
+});
+
+app.delete("/api/media/:id", async (req, res) => {
+  const { correlationId } = req;
+  try {
+    const media = await prisma.media.findUnique({ where: { id: req.params.id } });
+    if (!media) return sendError(res, null, "Media not found", 404, { correlationId });
+
+    // Safety check: is it used in any templates?
+    const usageCount = await prisma.template.count({
+      where: { mediaUrl: media.url }
+    });
+
+    if (usageCount > 0) {
+      return sendError(res, null, "Cannot delete media currently in use by templates", 400, { correlationId });
+    }
+
+    // Delete from Supabase
+    const { error: storageError } = await supabase.storage
+      .from("media")
+      .remove([media.filename]);
+
+    if (storageError) {
+      logger.error("Supabase delete error", { correlationId, error: storageError });
+      // Proceed with DB delete anyway if storage is gone or error is just "not found"
+    }
+
+    await prisma.media.delete({ where: { id: req.params.id } });
+    sendSuccess(res, { success: true });
+  } catch (error) {
+    sendError(res, error, "Delete failed", 500, { correlationId });
   }
 });
 

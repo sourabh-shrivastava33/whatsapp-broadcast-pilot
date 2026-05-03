@@ -1,0 +1,15 @@
+CREATE TABLE "Folder" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "parentId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Folder_pkey" PRIMARY KEY ("id")
+);
+
+ALTER TABLE "Media" ADD COLUMN "folderId" TEXT;
+
+ALTER TABLE "Folder" ADD CONSTRAINT "Folder_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Folder"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+ALTER TABLE "Media" ADD CONSTRAINT "Media_folderId_fkey" FOREIGN KEY ("folderId") REFERENCES "Folder"("id") ON DELETE SET NULL ON UPDATE CASCADE;

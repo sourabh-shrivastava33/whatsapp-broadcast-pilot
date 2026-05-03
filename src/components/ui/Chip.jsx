@@ -1,10 +1,18 @@
 import React from 'react'
 
-export function Chip({ label, status, className = '' }) {
+import { X } from 'lucide-react';
+
+export function Chip({ label, status = 'default', className = '', onRemove, icon: Icon }) {
   return (
-    <span className={`chip chip-${status} ${className}`}>
-      <span className="chip-dot" />
+    <span className={`chip chip-${status} ${onRemove ? 'removable' : ''} ${className}`}>
+      {Icon && <Icon size={12} />}
+      {!Icon && status !== 'default' && <span className="chip-dot" />}
       {label}
+      {onRemove && (
+        <button className="chip-remove" onClick={onRemove}>
+          <X size={12} />
+        </button>
+      )}
     </span>
   )
 }

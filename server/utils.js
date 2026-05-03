@@ -69,3 +69,10 @@ export function sendError(res, error, message = "Internal Server Error", status 
 // Re-export logAction for backward compatibility but use logger.audit internally
 export const logAction = (action, entity, entityId, metadata) => 
   logger.audit(action, entity, entityId, metadata);
+
+/**
+ * Calculates SHA-256 hash of a buffer
+ */
+export function calculateHash(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}

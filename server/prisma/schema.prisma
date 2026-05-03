@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "library"
 }
 
@@ -8,68 +8,68 @@ datasource db {
 }
 
 model Account {
-  id                  String   @id @default(uuid())
-  displayName         String
-  phoneNumberId       String   @unique
-  displayPhoneNumber  String?
-  accessToken         String
-  businessLabel       String?
-  wabaId              String?
-  qualityRating       String?
-  messagingLimit      Int?     @default(1000)
-  healthScore         Int?     @default(100)
-  accountMode         String?  @default("SANDBOX") // SANDBOX, PRODUCTION
-  isActive            Boolean  @default(false)
-  isArchived          Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  broadcasts          Broadcast[]
+  id                 String      @id @default(uuid())
+  displayName        String
+  phoneNumberId      String      @unique
+  displayPhoneNumber String?
+  accessToken        String
+  businessLabel      String?
+  wabaId             String?
+  qualityRating      String?
+  isActive           Boolean     @default(false)
+  isArchived         Boolean     @default(false)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  accountMode        String?     @default("SANDBOX")
+  healthScore        Int?        @default(100)
+  messagingLimit     Int?        @default(1000)
+  broadcasts         Broadcast[]
 }
 
 model Contact {
-  id              String       @id @default(uuid())
+  id              String        @id @default(uuid())
   name            String
-  phone           String       @unique
-  tags            Json?        
+  phone           String        @unique
+  tags            Json?
   notes           String?
-  brokerageNotes  String?      
-  leadStage       String       @default("NEW") 
-  status          String       @default("active") 
+  brokerageNotes  String?
+  leadStage       String        @default("NEW")
+  status          String        @default("active")
   lastBroadcastAt DateTime?
   lastReplyAt     DateTime?
-  unreadCount     Int          @default(0)
+  unreadCount     Int           @default(0)
   lastMessageAt   DateTime?
-  optInStatus     String       @default("unknown")
+  optInStatus     String        @default("unknown")
   optInMethod     String?
   optInTimestamp  DateTime?
   optOutTimestamp DateTime?
   optOutReason    String?
-  isBlocklisted   Boolean      @default(false)
+  isBlocklisted   Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   lastAccountId   String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  messages        MessageLog[]
   chatMessages    ChatMessage[]
+  messages        MessageLog[]
 }
 
 model ChatMessage {
   id            String   @id @default(uuid())
   contactId     String
-  contact       Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  fromMe        Boolean  // true if sent by CRM, false if incoming from customer
-  type          String   @default("text") // text, image, template_broadcast
+  fromMe        Boolean
+  type          String   @default("text")
   body          String?
   mediaUrl      String?
   metaMessageId String?  @unique
-  accountId     String?
   timestamp     DateTime @default(now())
+  accountId     String?
+  contact       Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }
 
 model Segment {
   id          String   @id @default(uuid())
   name        String
   description String?
-  filters     Json?    // Logic for filtering (tags, status, etc.)
+  filters     Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -97,46 +97,68 @@ model Template {
   broadcasts      Broadcast[]
 }
 
-model Media {
+model Folder {
   id        String   @id @default(uuid())
-  url       String
-  filename  String
-  type      String   // IMAGE, VIDEO, AUDIO, DOCUMENT
-  size      Int
+  name      String
+  parentId  String?
+  parent    Folder?  @relation("SubFolders", fields: [parentId], references: [id])
+  children  Folder[] @relation("SubFolders")
+  media     Media[]
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Media {
+  id         String   @id @default(uuid())
+  url        String
+  filename   String
+  type       String   // IMAGE, VIDEO, AUDIO, DOCUMENT
+  size       Int
+  tags       Json?    // Array of strings
+  campaign   String?
+  language   String?
+  purpose    String?
+  status     String   @default("active")
+  isArchived Boolean  @default(false)
+  usageCount Int      @default(0)
+  folderId   String?
+  folder     Folder?  @relation(fields: [folderId], references: [id])
+  metadata   Json?    // Technical specs (hash, width, height, duration, etc.)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Broadcast {
-  id         String       @id @default(uuid())
-  accountId  String
-  account    Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  templateId String
-  template   Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  contactIds Json
-  status     String       @default("pending")
-  results    Json?
-  sentAt     DateTime     @default(now())
-  isPaused   Boolean      @default(false)
-  stopReason String?
+  id            String       @id @default(uuid())
+  accountId     String
+  templateId    String
+  contactIds    Json
+  status        String       @default("pending")
+  results       Json?
+  sentAt        DateTime     @default(now())
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
   correlationId String?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-  messages   MessageLog[]
+  isPaused      Boolean      @default(false)
+  stopReason    String?
+  account       Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  template      Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  messages      MessageLog[]
 }
 
 model MessageLog {
   id             String    @id @default(uuid())
   broadcastId    String
-  broadcast      Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
   contactId      String
-  contact        Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  status         String    @default("queued") // queued, sent, delivered, read, failed
+  status         String    @default("queued")
   metaMessageId  String?   @unique
-  idempotencyKey String?   @unique
   error          String?
-  correlationId  String?
   sentAt         DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  idempotencyKey String?   @unique
+  correlationId  String?
+  broadcast      Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  contact        Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }
 
 model SystemConfig {
@@ -145,7 +167,6 @@ model SystemConfig {
   pauseReason String?
   updatedAt   DateTime @updatedAt
 }
-
 
 model AuditLog {
   id        String   @id @default(uuid())
@@ -157,15 +178,15 @@ model AuditLog {
 }
 
 model WebhookSetting {
-  id              String   @id @default(uuid())
-  url             String
-  verifyToken     String
-  isActive        Boolean  @default(true)
-  subscriptions   String   @default("messages,statuses")
-  lastSyncAt      DateTime?
-  metaStatus      String   @default("unknown")
-  metaError       String?
-  healthStatus    String   @default("unknown")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(uuid())
+  url           String
+  verifyToken   String
+  isActive      Boolean   @default(true)
+  subscriptions String    @default("messages,statuses")
+  lastSyncAt    DateTime?
+  metaStatus    String    @default("unknown")
+  metaError     String?
+  healthStatus  String    @default("unknown")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
