@@ -93,49 +93,64 @@ async function withExponentialBackoff(fn, maxRetries = MAX_RETRIES) {
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Partitions a contact list proportionally across accounts based on tier limits.
+ * Partitions contacts across accounts, respecting identity pinning (lastAccountId).
+ * Unpinned or orphaned contacts are distributed proportionally across active accounts.
  *
- * @param {string[]} contactIds
+ * @param {Array<{id: string, lastAccountId: string?}>} contacts
  * @param {Array<{id: string, tierLimit: number, [key: string]: any}>} accounts
  * @returns {Array<{account: object, contactIds: string[]}>}
  */
-export function partitionContacts(contactIds, accounts) {
-  // Filter out accounts that have no remaining capacity (already at limit)
+export function partitionContacts(contacts, accounts) {
   const viable = accounts.filter((a) => a.tierLimit > 0);
   if (viable.length === 0) return [];
 
-  const totalCapacity = viable.reduce((sum, a) => {
-    return a.tierLimit === Infinity ? sum + contactIds.length : sum + a.tierLimit;
-  }, 0);
+  const partitionsMap = new Map();
+  viable.forEach(acc => partitionsMap.set(acc.id, { account: acc, contactIds: [] }));
 
-  let remaining = [...contactIds];
-  const partitions = [];
-
-  for (let i = 0; i < viable.length; i++) {
-    const account = viable[i];
-    const isLast = i === viable.length - 1;
-
-    let count;
-    if (isLast) {
-      // Last account takes whatever is left
-      count = remaining.length;
-    } else if (account.tierLimit === Infinity) {
-      count = remaining.length;
+  const unpinned = [];
+  
+  // 1. Group contacts by pin
+  contacts.forEach(contact => {
+    if (contact.lastAccountId && partitionsMap.has(contact.lastAccountId)) {
+      partitionsMap.get(contact.lastAccountId).contactIds.push(contact.id);
     } else {
-      // Proportional slice
-      const fraction = account.tierLimit / totalCapacity;
-      count = Math.min(Math.round(contactIds.length * fraction), account.tierLimit, remaining.length);
+      unpinned.push(contact.id);
     }
+  });
 
-    partitions.push({
-      account,
-      contactIds: remaining.splice(0, count),
-    });
+  // 2. Distribute unpinned contacts proportionally
+  if (unpinned.length > 0) {
+    const totalCapacity = viable.reduce((sum, a) => {
+      // Subtract already assigned pinned contacts from capacity
+      const assigned = partitionsMap.get(a.id).contactIds.length;
+      const remainingAccCapacity = a.tierLimit === Infinity ? Infinity : Math.max(0, a.tierLimit - assigned);
+      return remainingAccCapacity === Infinity ? sum + unpinned.length : sum + remainingAccCapacity;
+    }, 0);
 
-    if (remaining.length === 0) break;
+    let remainingUnpinned = [...unpinned];
+    
+    for (let i = 0; i < viable.length; i++) {
+      const account = viable[i];
+      const isLast = i === viable.length - 1;
+      const assigned = partitionsMap.get(account.id).contactIds.length;
+      const remainingAccCapacity = account.tierLimit === Infinity ? Infinity : Math.max(0, account.tierLimit - assigned);
+
+      let count;
+      if (isLast) {
+        count = remainingUnpinned.length;
+      } else if (remainingAccCapacity === Infinity) {
+        count = remainingUnpinned.length;
+      } else {
+        const fraction = remainingAccCapacity / totalCapacity;
+        count = Math.min(Math.round(unpinned.length * fraction), remainingAccCapacity, remainingUnpinned.length);
+      }
+
+      partitionsMap.get(account.id).contactIds.push(...remainingUnpinned.splice(0, count));
+      if (remainingUnpinned.length === 0) break;
+    }
   }
 
-  return partitions;
+  return Array.from(partitionsMap.values()).filter(p => p.contactIds.length > 0);
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -172,6 +187,7 @@ async function processPartition({
   onMessageFailure,
   onAuditLog,
   onProgress,
+  checkPaused, // New injection
 }) {
   const limit = pLimit(CONCURRENCY_PER_PARTITION);
   let success = 0;
@@ -189,6 +205,11 @@ async function processPartition({
 
   const tasks = contactIds.map((contactId, idx) =>
     limit(async () => {
+      // ── Safety Control: Global/Broadcast Pause ───────────────
+      if (checkPaused && await checkPaused()) {
+        skipped++;
+        return;
+      }
       // ── Tier limit enforcement ───────────────────────────────
       if (sentCount >= haltLimit) {
         console.warn(
@@ -206,8 +227,15 @@ async function processPartition({
 
       const contact = await getContact(contactId);
 
-      // ── Opt-out check ────────────────────────────────────────
-      if (contact?.optInStatus === 'opted_out' || contact?.status === 'opted_out') {
+      // ── Compliance check ────────────────────────────────────────
+      const isMarketing = (template.category || '').toUpperCase() === 'MARKETING';
+      if (contact?.optInStatus === 'opted_out' || contact?.status === 'opted_out' || contact?.isBlocklisted) {
+        skipped++;
+        return;
+      }
+      
+      // Marketing requires explicit opt-in. Unknown is not enough for marketing.
+      if (isMarketing && contact?.optInStatus !== 'opted_in') {
         skipped++;
         return;
       }
@@ -296,8 +324,12 @@ export async function runBroadcast(job) {
     throw err;
   }
 
-  // ── Partition contacts across accounts ───────────────────────
-  const partitions = partitionContacts(contactIds, accounts);
+  // ── Fetch contacts to check pinning and compliance ───────────
+  const contacts = await Promise.all(contactIds.map(id => getContact(id)));
+  const validContacts = contacts.filter(Boolean);
+
+  // ── Partition contacts across accounts (Identity-aware) ───────
+  const partitions = partitionContacts(validContacts, accounts);
 
   await onAuditLog('BROADCAST_ENGINE_START', {
     broadcastId,

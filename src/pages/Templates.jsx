@@ -1,58 +1,73 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, FilePlus, Pencil, Trash2, RefreshCw } from 'lucide-react'
+import FileText from 'lucide-react/dist/esm/icons/file-text'
+import FilePlus from 'lucide-react/dist/esm/icons/file-plus'
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw'
 import { Button } from '../components/ui/Button'
-import { FilterChip, Chip } from '../components/ui/Chip'
+import { FilterChip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { Modal } from '../components/ui/Modal'
 import { useTemplates } from '../store/TemplatesContext'
+import { useToast } from '../store/ToastContext'
+import { TemplateCard } from './templates/TemplateCard'
+import { TemplatesSkeleton } from './templates/TemplatesSkeleton'
 import './Templates.css'
 
 const STATUS_FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Rejected']
-
-const CATEGORY_LABELS = {
-  MARKETING: 'Marketing',
-  UTILITY: 'Utility',
-  AUTHENTICATION: 'Authentication',
-}
 
 export default function Templates() {
   const navigate = useNavigate()
   const [activeFilter, setActiveFilter] = useState('All')
   const [deletingTemplate, setDeletingTemplate] = useState(null)
   const [syncing, setSyncing] = useState(false)
-  const { templates, deleteTemplate, syncTemplates } = useTemplates()
+  const { templates, loading, deleteTemplate, syncTemplates } = useTemplates()
+  const { toast } = useToast()
 
-  const handleSync = async () => {
+  const handleSync = useCallback(async () => {
     setSyncing(true)
     try {
       await syncTemplates()
     } catch (err) {
       console.error(err)
-      alert('Failed to sync templates: ' + err.message)
+      toast({ type: 'error', title: 'Sync Failed', message: err.message })
     } finally {
       setSyncing(false)
     }
-  }
+  }, [syncTemplates, toast])
 
   const filtered = useMemo(() => {
     if (activeFilter === 'All') return templates
-    return templates.filter((t) => t.status === activeFilter.toLowerCase())
+    return templates.filter((t) => (t.status || '').toLowerCase() === activeFilter.toLowerCase())
   }, [templates, activeFilter])
 
   const counts = useMemo(() => {
-    const c = { All: templates.length }
-    STATUS_FILTERS.slice(1).forEach((s) => {
-      c[s] = templates.filter((t) => t.status === s.toLowerCase()).length
+    const c = { All: templates.length, Draft: 0, Pending: 0, Approved: 0, Rejected: 0 }
+    templates.forEach(t => {
+      const s = (t.status || 'draft').toLowerCase()
+      const key = s.charAt(0).toUpperCase() + s.slice(1)
+      if (c[key] !== undefined) c[key]++
     })
     return c
   }, [templates])
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     if (deletingTemplate) {
       deleteTemplate(deletingTemplate.id)
       setDeletingTemplate(null)
+      toast({ type: 'success', title: 'Deleted', message: 'Template removed successfully' })
     }
+  }, [deletingTemplate, deleteTemplate, toast])
+
+  const handleEdit = useCallback((id) => {
+    navigate(`/templates/${id}/edit`)
+  }, [navigate])
+
+  const setDeleting = useCallback((template) => {
+    setDeletingTemplate(template)
+  }, [])
+
+  if (loading) {
+    return <TemplatesSkeleton />
   }
 
   return (
@@ -62,7 +77,7 @@ export default function Templates() {
           <h1 className="page-title">Templates</h1>
           <p className="page-subtitle">
             {templates.length > 0
-              ? `${templates.length} template${templates.length !== 1 ? 's' : ''}`
+              ? `${templates.length} template${templates.length !== 1 ? 's' : ''} available`
               : 'Create and manage your WhatsApp message templates'}
           </p>
         </div>
@@ -73,6 +88,7 @@ export default function Templates() {
             onClick={handleSync}
             disabled={syncing}
             className={syncing ? 'spin' : ''}
+            aria-label="Sync with Meta"
           >
             {syncing ? 'Syncing...' : 'Sync with Meta'}
           </Button>
@@ -106,56 +122,18 @@ export default function Templates() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title={`No ${activeFilter.toLowerCase()} templates`}
-          description={`You don't have any templates with "${activeFilter}" status.`}
+          title={`No ${(activeFilter || 'all').toLowerCase()} templates`}
+          description={`You don't have any templates with "${activeFilter || 'all'}" status.`}
         />
       ) : (
         <div className="templates-list">
           {filtered.map((template) => (
-            <div
+            <TemplateCard
               key={template.id}
-              className="template-card"
-              onClick={() => navigate(`/templates/${template.id}/edit`)}
-            >
-              <div className="template-card-left">
-                <div className="template-card-name">{template.name}</div>
-                <div className="template-card-meta">
-                  {CATEGORY_LABELS[template.category] || template.category}
-                  {template.useCaseLabel ? ` · ${template.useCaseLabel}` : ''}
-                  {' · '}
-                  {template.language}
-                </div>
-                {template.status === 'rejected' && template.rejectionReason && (
-                  <div className="template-rejection-reason">
-                    Reason: {template.rejectionReason}
-                  </div>
-                )}
-              </div>
-              <div className="template-card-right">
-                <Chip
-                  label={template.status.charAt(0).toUpperCase() + template.status.slice(1)}
-                  status={template.status}
-                />
-                <div className="template-card-actions" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    className="contact-action-btn"
-                    onClick={() => navigate(`/templates/${template.id}/edit`)}
-                    title="Edit"
-                    aria-label="Edit template"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    className="contact-action-btn danger"
-                    onClick={() => setDeletingTemplate(template)}
-                    title="Delete"
-                    aria-label="Delete template"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            </div>
+              template={template}
+              onEdit={handleEdit}
+              onDelete={setDeleting}
+            />
           ))}
         </div>
       )}

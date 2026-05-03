@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ChevronRight, Check } from 'lucide-react'
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right'
+import Check from 'lucide-react/dist/esm/icons/check'
 import './CommandStrip.css'
 
 const demoSteps = [
@@ -14,12 +15,9 @@ export function CommandStrip() {
   const location = useLocation()
   const [activeStep, setActiveStep] = useState(0)
 
-  // Auto-cycle through steps for the wow effect
+  // Auto-cycle removed for performance optimization (Minimize main-thread work)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveStep((prev) => (prev + 1) % (demoSteps.length + 1))
-    }, 3000)
-    return () => clearInterval(interval)
+    // We only react to location changes now
   }, [])
 
   // Override with actual navigation

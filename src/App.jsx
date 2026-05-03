@@ -2,7 +2,8 @@ import React, { Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout'
 import { AppProviders } from './store/AppProviders'
-import { Loader2 } from 'lucide-react'
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2'
+import ErrorBoundary from './components/ErrorBoundary'
 import './components/ui/ui.css'
 
 // Lazy loaded routes for Lighthouse Performance (Code Splitting)
@@ -28,10 +29,11 @@ const FullPageLoader = () => (
 
 export default function App() {
   return (
-    <AppProviders>
-      <AppLayout>
-        <Suspense fallback={<FullPageLoader />}>
-          <Routes>
+    <ErrorBoundary>
+      <AppProviders>
+        <AppLayout>
+          <Suspense fallback={<FullPageLoader />}>
+            <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="/health" element={<AccountHealth />} />
@@ -46,9 +48,10 @@ export default function App() {
           <Route path="/broadcast/:id" element={<BroadcastDetail />} />
           <Route path="/compliance" element={<Compliance />} />
           <Route path="/health" element={<HealthDashboard />} />
-          </Routes>
-        </Suspense>
-      </AppLayout>
-    </AppProviders>
+            </Routes>
+          </Suspense>
+        </AppLayout>
+      </AppProviders>
+    </ErrorBoundary>
   )
 }

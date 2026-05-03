@@ -1,3 +1,4 @@
+import config from '../config.js';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const MediaContext = createContext();
@@ -10,7 +11,7 @@ export function MediaProvider({ children }) {
   const fetchMedia = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/api/media');
+      const response = await fetch(config.API_URL + "/media");
       if (!response.ok) throw new Error('Failed to fetch media');
       const data = await response.json();
       setMedia(data);
@@ -26,7 +27,7 @@ export function MediaProvider({ children }) {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:3001/api/media/upload', {
+      const response = await fetch('http://127.0.0.1:3001/api/media/upload', {
         method: 'POST',
         body: formData,
       });

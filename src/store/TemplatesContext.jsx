@@ -1,17 +1,18 @@
+import config from '../config.js';
 /**
  * TemplatesContext — manages WhatsApp message templates.
  */
 import React, { createContext, useContext, useReducer, useEffect } from "react";
 
 const TemplatesContext = createContext(null);
-const API_URL = "http://localhost:3001/api/templates";
+const API_URL = config.API_URL + "/templates";
 
-const INITIAL_STATE = { templates: [] };
+const INITIAL_STATE = { templates: [], loading: true };
 
 function reducer(state, action) {
   switch (action.type) {
     case "SET_TEMPLATES":
-      return { ...state, templates: action.payload };
+      return { ...state, templates: action.payload, loading: false };
     case "ADD_TEMPLATE":
       return { ...state, templates: [...state.templates, action.payload] };
     case "UPDATE_TEMPLATE":
@@ -39,7 +40,10 @@ export function TemplatesProvider({ children }) {
     fetch(API_URL)
       .then((res) => res.json())
       .then((data) => dispatch({ type: "SET_TEMPLATES", payload: data }))
-      .catch((err) => console.error("Failed to fetch templates", err));
+      .catch((err) => {
+        console.error("Failed to fetch templates", err);
+        dispatch({ type: "SET_TEMPLATES", payload: [] });
+      });
   }, []);
 
   return (
@@ -56,6 +60,7 @@ export function useTemplates() {
 
   return {
     templates: state.templates,
+    loading: state.loading,
 
     addTemplate: async (payload) => {
       try {
@@ -134,7 +139,7 @@ export function useTemplates() {
     syncTemplates: async () => {
       try {
         const res = await fetch(
-          "http://localhost:3001/api/meta/sync-templates",
+          config.API_URL + "/meta/sync-templates",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },

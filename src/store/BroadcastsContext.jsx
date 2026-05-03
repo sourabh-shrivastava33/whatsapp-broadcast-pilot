@@ -1,17 +1,18 @@
+import config from '../config.js';
 /**
  * BroadcastsContext — manages broadcast records.
  */
 import React, { createContext, useContext, useReducer, useEffect } from 'react'
 
 const BroadcastsContext = createContext(null)
-const API_URL = 'http://localhost:3001/api/broadcasts'
+const API_URL = config.API_URL + "/broadcasts"
 
-const INITIAL_STATE = { broadcasts: [] }
+const INITIAL_STATE = { broadcasts: [], loading: true }
 
 function reducer(state, action) {
   switch (action.type) {
     case 'SET_BROADCASTS':
-      return { ...state, broadcasts: action.payload }
+      return { ...state, broadcasts: action.payload, loading: false }
     case 'ADD_BROADCAST':
       return { ...state, broadcasts: [...state.broadcasts, action.payload] }
     case 'UPDATE_BROADCAST': {
@@ -39,7 +40,10 @@ export function BroadcastsProvider({ children }) {
           dispatch({ type: 'SET_BROADCASTS', payload: [] })
         }
       })
-      .catch(err => console.error('Failed to fetch broadcasts', err))
+      .catch(err => {
+        console.error('Failed to fetch broadcasts', err)
+        dispatch({ type: 'SET_BROADCASTS', payload: [] })
+      })
   }, [])
 
   return (
@@ -56,6 +60,7 @@ export function useBroadcasts() {
 
   return {
     broadcasts: state.broadcasts,
+    loading: state.loading,
     
     addBroadcast: async (payload) => {
       try {
@@ -65,7 +70,11 @@ export function useBroadcasts() {
           body: JSON.stringify(payload)
         })
         const data = await res.json()
-        dispatch({ type: 'ADD_BROADCAST', payload: data })
+        if (res.ok) {
+          dispatch({ type: 'ADD_BROADCAST', payload: data })
+        } else {
+          throw new Error(data.error || 'Failed to create broadcast')
+        }
       } catch (err) {
         console.error(err)
       }

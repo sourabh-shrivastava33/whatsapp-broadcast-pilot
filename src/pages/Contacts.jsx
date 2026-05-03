@@ -1,10 +1,14 @@
-import React, { useState, useMemo } from 'react'
-import { Users, UserPlus, Search, Phone, Pencil, Trash2, Tag } from 'lucide-react'
+import React, { useState, useMemo, useCallback } from 'react'
+import Users from 'lucide-react/dist/esm/icons/users'
+import UserPlus from 'lucide-react/dist/esm/icons/user-plus'
+import Search from 'lucide-react/dist/esm/icons/search'
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui/EmptyState'
 import { Modal } from '../components/ui/Modal'
 import { ContactFormModal } from '../components/ui/ContactFormModal'
 import { useContacts } from '../store/ContactsContext'
+import { ContactRow } from './contacts/ContactRow'
+import { ContactsSkeleton } from './contacts/ContactsSkeleton'
 import './Contacts.css'
 
 export default function Contacts() {
@@ -12,38 +16,46 @@ export default function Contacts() {
   const [editingContact, setEditingContact] = useState(null)
   const [deletingContact, setDeletingContact] = useState(null)
   const [search, setSearch] = useState('')
-  const { contacts, deleteContact } = useContacts()
+  const { contacts, loading, deleteContact } = useContacts()
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return contacts
     return contacts.filter(
       (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.phone.toLowerCase().includes(q) ||
-        (c.tags || []).some((t) => t.toLowerCase().includes(q))
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.phone || '').toLowerCase().includes(q) ||
+        (c.tags || []).some((t) => (t || '').toLowerCase().includes(q))
     )
   }, [contacts, search])
 
-  const openAdd = () => {
+  const openAdd = useCallback(() => {
     setEditingContact(null)
     setShowFormModal(true)
-  }
+  }, [])
 
-  const openEdit = (contact) => {
+  const openEdit = useCallback((contact) => {
     setEditingContact(contact)
     setShowFormModal(true)
-  }
+  }, [])
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     if (deletingContact) {
       deleteContact(deletingContact.id)
       setDeletingContact(null)
     }
+  }, [deletingContact, deleteContact])
+
+  const setDeleting = useCallback((contact) => {
+    setDeletingContact(contact)
+  }, [])
+
+  if (loading) {
+    return <ContactsSkeleton />
   }
 
   return (
-    <div className="page fade-in">
+    <div className="page fade-in contacts-page">
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-title">Contacts</h1>
@@ -96,50 +108,12 @@ export default function Contacts() {
       ) : (
         <div className="contacts-list">
           {filtered.map((contact) => (
-            <div key={contact.id} className="contact-row">
-              <div className="contact-avatar">
-                {contact.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="contact-info">
-                <div className="contact-name">{contact.name}</div>
-                <div className="contact-phone">
-                  <Phone size={11} />
-                  {contact.phone}
-                </div>
-              </div>
-
-              {/* Tags */}
-              {contact.tags && contact.tags.length > 0 && (
-                <div className="contact-tags">
-                  {contact.tags.map((tag) => (
-                    <span key={tag} className="contact-tag">
-                      <Tag size={9} />
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Row actions */}
-              <div className="contact-actions">
-                <button
-                  className="contact-action-btn"
-                  onClick={() => openEdit(contact)}
-                  aria-label="Edit contact"
-                  title="Edit"
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  className="contact-action-btn danger"
-                  onClick={() => setDeletingContact(contact)}
-                  aria-label="Delete contact"
-                  title="Delete"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
+            <ContactRow
+              key={contact.id}
+              contact={contact}
+              onEdit={openEdit}
+              onDelete={setDeleting}
+            />
           ))}
         </div>
       )}
