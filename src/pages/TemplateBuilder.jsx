@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, Plus, Trash2, Save, Eye, AlertCircle, Send, CheckCircle2, XCircle, 
+  ArrowLeft, Plus, Trash2, Save, Eye, AlertCircle, Send,
   Image as ImageIcon, Video as VideoIcon, FileText as FileIcon, Type as TextIcon,
-  Info, HelpCircle, Tag, Globe, MessageSquare, ShieldCheck
+  Info, HelpCircle, Tag, Globe, MessageSquare, ShieldCheck, Loader2
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { WhatsAppPreview } from '../components/ui/WhatsAppPreview'
@@ -17,10 +17,26 @@ const AUTH_FOOTER = 'For your security, do not share this code.'
 
 /* ── constants ── */
 const CATEGORIES = [
-  { value: 'MARKETING', label: 'Marketing' },
-  { value: 'UTILITY', label: 'Utility' },
-  { value: 'AUTHENTICATION', label: 'Authentication' },
+  { label: 'Marketing', value: 'MARKETING' },
+  { label: 'Utility', value: 'UTILITY' },
+  { label: 'Authentication', value: 'AUTHENTICATION' },
 ]
+
+const VARIANTS = {
+  MARKETING: [
+    { id: 'standard', label: 'Standard', description: 'Traditional text/media message' },
+    { id: 'carousel', label: 'Carousel', description: 'Multiple scrolling media cards' },
+    { id: 'catalog', label: 'Catalog', description: 'Display products from your shop' },
+    { id: 'coupon', label: 'Coupon', description: 'Share codes with copy-to-clipboard' },
+    { id: 'lto', label: 'Limited-Time Offer', description: 'Expiration timer for urgency' }
+  ],
+  UTILITY: [
+    { id: 'standard', label: 'Standard', description: 'Notifications and updates' }
+  ],
+  AUTHENTICATION: [
+    { id: 'otp', label: 'One-Time Passcode', description: 'Secure codes with autofill' }
+  ]
+}
 
 const LANGUAGES = [
   { value: 'en', label: 'English' },
@@ -56,7 +72,7 @@ export default function TemplateBuilder() {
   const [form, setForm] = useState({
     name: '',
     category: 'MARKETING',
-    useCaseLabel: '',
+    variant: 'standard',
     language: 'en_US',
     headerType: 'TEXT',
     header: '',
@@ -69,6 +85,7 @@ export default function TemplateBuilder() {
   const [samples, setSamples] = useState({})
   const [errors, setErrors] = useState({})
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   /* populate when editing */
   useEffect(() => {
@@ -76,6 +93,7 @@ export default function TemplateBuilder() {
       setForm({
         name: existing.name || '',
         category: existing.category || 'MARKETING',
+        variant: existing.variant || 'standard',
         useCaseLabel: existing.useCaseLabel || '',
         language: existing.language || 'en_US',
         headerType: existing.headerType || 'TEXT',
@@ -102,8 +120,33 @@ export default function TemplateBuilder() {
   }, [form.body, form.header])
 
   /* helpers */
-  const set = useCallback((field) => (e) =>
-    setForm((p) => ({ ...p, [field]: e.target.value })), [])
+  const set = (key) => (e) => {
+    const val = e.target.value
+    setForm((prev) => {
+      const next = { ...prev, [key]: val }
+      // Reset variant to standard if category changes
+      if (key === 'category') next.variant = 'standard'
+      return next
+    })
+  }
+
+  const setVariant = (v) => {
+    setForm(prev => {
+      const next = { ...prev, variant: v }
+      
+      // Auto-configure buttons for specific variants
+      if (v === 'otp') {
+        next.buttons = [{ type: 'OTP', text: 'Copy Code', otp_type: 'COPY_CODE' }]
+      } else if (v === 'catalog') {
+        next.buttons = [{ type: 'CATALOG', text: 'View Items' }]
+      } else if (prev.variant === 'otp' || prev.variant === 'catalog') {
+        // Reset buttons when leaving specialized variants
+        next.buttons = []
+      }
+      
+      return next
+    })
+  }
 
   const addButton = () => {
     if (isReadOnly || form.buttons.length >= 3) return
@@ -152,7 +195,11 @@ export default function TemplateBuilder() {
     else if (!/^[a-z0-9_]+$/.test(form.name.trim()))
       e.name = 'Name must be lowercase letters, numbers, or underscores only'
     if (!form.body.trim()) e.body = 'Message body is required'
-    variables.forEach((n) => {
+    variables.forEach((n, index) => {
+      const expectedNum = index + 1;
+      if (Number(n) !== expectedNum) {
+        e.body = `Variables must be sequential starting from 1. Found {{${n}}} but expected {{${expectedNum}}}.`;
+      }
       if (!samples[n]?.trim()) e[`sample_${n}`] = `Sample value for {{${n}}} is required`
     })
     setErrors(e)
@@ -216,15 +263,20 @@ export default function TemplateBuilder() {
     if (isEdit && existing) {
       updateTemplate({ id: existing.id, ...payload })
       if (targetStatus === 'pending') {
+        setIsSubmitting(true)
         submitTemplateForApproval(existing.id)
           .then(() => navigate('/templates'))
-          .catch(err => alert('Failed to submit template: ' + err.message))
+          .catch(err => {
+            alert('Failed to submit template: ' + err.message)
+            setIsSubmitting(false)
+          })
         return
       } else if (targetStatus && targetStatus !== existing.status) {
         setTemplateStatus(existing.id, targetStatus)
       }
     } else {
       // For new templates, we save then submit if needed
+      setIsSubmitting(true)
       addTemplate({ ...payload, status: 'draft' })
         .then(async (newTpl) => {
            if (targetStatus === 'pending') {
@@ -233,22 +285,18 @@ export default function TemplateBuilder() {
                navigate('/templates')
              } catch (err) {
                alert('Template saved as draft, but Meta submission failed: ' + err.message)
+               setIsSubmitting(false)
                navigate('/templates')
              }
            } else {
              navigate('/templates')
            }
-        })
+        }).catch(() => setIsSubmitting(false))
     }
     if (targetStatus !== 'pending') {
       navigate('/templates')
     }
   }
-
-  const handleDemoAction = (newStatus) => {
-    setTemplateStatus(existing.id, newStatus)
-  }
-
   /* status chip for edit mode */
   const statusChip = isEdit && existing ? (
     <Chip label={(existing.status || 'draft').charAt(0).toUpperCase() + (existing.status || 'draft').slice(1)} status={existing.status || 'draft'} />
@@ -271,37 +319,26 @@ export default function TemplateBuilder() {
         
         {/* Actions based on status */}
         <div className="builder-topbar-actions">
-          {isReadOnly ? (
-            status === 'pending' ? (
-              <>
-                <Button variant="ghost" icon={XCircle} onClick={() => handleDemoAction('rejected')} className="demo-btn-reject">
-                  Reject (Demo)
-                </Button>
-                <Button variant="primary" icon={CheckCircle2} onClick={() => handleDemoAction('approved')} className="demo-btn-approve">
-                  Approve (Demo)
-                </Button>
-              </>
-            ) : (
-              <div className="status-badge-premium approved">
-                <ShieldCheck size={14} />
-                <span>Approved & Protected</span>
-              </div>
-            )
-          ) : (
+          {isReadOnly && (
+            <div className="status-badge-premium approved">
+              <ShieldCheck size={14} />
+              <span>Approved & Protected</span>
+            </div>
+          )}
+          {!isReadOnly && (
             <>
               <Button variant="ghost" icon={Save} onClick={() => doSave('draft')}>
                 Save Draft
               </Button>
-              <Button variant="primary" icon={Send} onClick={() => doSave('pending')}>
-                Submit for Approval
+              <Button variant="primary" icon={isSubmitting ? Loader2 : Send} onClick={() => doSave('pending')} disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
               </Button>
             </>
           )}
         </div>
       </div>
 
-      {/* Split layout */}
-      <div className="builder-split">
+          <div className="builder-split">
         {/* ── LEFT: Form ── */}
         <div className="builder-form-panel">
           <div className="builder-section">
@@ -343,13 +380,30 @@ export default function TemplateBuilder() {
               </div>
             </div>
 
-            {/* Use case label */}
+            {/* Variant Selector */}
             <div className="form-group">
-              <label className="form-label" htmlFor="tpl-usecase">
-                Use Case Label <span className="form-label-optional">(Optional)</span>
-              </label>
+              <label className="form-label">Template Type</label>
+              <div className="variant-grid">
+                {(VARIANTS[form.category] || []).map((v) => (
+                  <div 
+                    key={v.id} 
+                    className={`variant-card ${form.variant === v.id ? 'active' : ''} ${isReadOnly ? 'disabled' : ''}`}
+                    onClick={() => !isReadOnly && setVariant(v.id)}
+                  >
+                    <div className="variant-radio" />
+                    <div className="variant-content">
+                      <div className="variant-label">{v.label}</div>
+                      <div className="variant-desc">{v.description}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Use Case Label */}
+            <div className="form-group">
+              <label className="form-label">Use Case Label <span className="label-optional">(Optional)</span></label>
               <input
-                id="tpl-usecase"
                 type="text"
                 placeholder="e.g. Order Confirmation, Promo Offer"
                 value={form.useCaseLabel}
@@ -359,145 +413,155 @@ export default function TemplateBuilder() {
             </div>
           </div>
 
-          <div className="builder-divider" />
+          <div className="builder-section-divider" />
 
-          {/* Message */}
-          <div className="builder-section">
-            <h2 className="builder-section-title">Message Content</h2>
-
-            {/* Header */}
-            <div className="form-group">
-              <label className="form-label">Header Type</label>
-              <div className="header-type-tabs">
-                {[
-                  { id: 'TEXT', label: 'Text', icon: TextIcon },
-                  { id: 'IMAGE', label: 'Image', icon: ImageIcon },
-                  { id: 'VIDEO', label: 'Video', icon: VideoIcon },
-                  { id: 'DOCUMENT', label: 'File', icon: FileIcon },
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`header-type-tab ${form.headerType === t.id ? 'active' : ''}`}
-                    onClick={() => !isReadOnly && setForm(p => ({ ...p, headerType: t.id }))}
-                    disabled={isReadOnly}
-                  >
-                    <t.icon size={14} />
-                    {t.label}
-                  </button>
-                ))}
+          {/* ── HEADER (Variant Conditional) ── */}
+          {form.variant !== 'otp' && (
+            <div className="builder-section">
+              <div className="builder-section-header">
+                <h2 className="builder-section-title">Header</h2>
+                {form.variant === 'catalog' && <div className="builder-section-badge">Optional</div>}
               </div>
 
-              {form.headerType === 'TEXT' ? (
-                <div className="mt-4">
-                  <input
-                    id="tpl-header"
-                    type="text"
-                    placeholder="Short header text (max 60 chars)"
-                    maxLength={60}
-                    value={form.header}
-                    onChange={set('header')}
-                    disabled={isReadOnly}
-                  />
-                  <div className="form-hint">{form.header.length}/60 · Supports {"{{1}}"}</div>
-                </div>
-              ) : (
-                <div className="mt-4">
-                  {form.mediaUrl ? (
-                    <div className="media-preview-box">
-                      {form.headerType === 'IMAGE' ? (
-                        <img src={form.mediaUrl} alt="Preview" className="media-preview-thumb" />
-                      ) : (
-                        <div className="media-preview-icon">
-                          {form.headerType === 'VIDEO' ? <VideoIcon size={24} /> : <FileIcon size={24} />}
-                        </div>
-                      )}
-                      <div className="media-preview-info">
-                        <span className="media-preview-url truncate">{form.mediaUrl}</span>
-                        {!isReadOnly && (
-                          <button 
-                            className="media-change-btn"
-                            onClick={() => setIsMediaPickerOpen(true)}
-                          >
-                            Change
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
+              <div className="form-group">
+                <label className="form-label">Header Type</label>
+                <div className="header-type-tabs">
+                  {[
+                    { id: 'TEXT', label: 'Text', icon: TextIcon },
+                    { id: 'IMAGE', label: 'Image', icon: ImageIcon },
+                    { id: 'VIDEO', label: 'Video', icon: VideoIcon },
+                    { id: 'DOCUMENT', label: 'File', icon: FileIcon },
+                  ].map((t) => (
                     <button
+                      key={t.id}
                       type="button"
-                      className="media-select-placeholder"
-                      onClick={() => setIsMediaPickerOpen(true)}
+                      className={`header-type-tab ${form.headerType === t.id ? 'active' : ''}`}
+                      onClick={() => !isReadOnly && setForm(p => ({ ...p, headerType: t.id }))}
                       disabled={isReadOnly}
                     >
-                      <Plus size={20} />
-                      <span>Select {form.headerType.toLowerCase()} from library</span>
+                      <t.icon size={14} />
+                      {t.label}
                     </button>
-                  )}
+                  ))}
                 </div>
-              )}
-            </div>
 
-            {/* Body */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="tpl-body">Body *</label>
-              {form.category === 'AUTHENTICATION' ? (
-                <div className="auth-body-locked">
-                  <textarea
-                    id="tpl-body"
-                    rows={3}
-                    value={AUTH_BODY}
-                    readOnly
-                    className="locked-input"
-                  />
-                  <div className="auth-notice">
-                    <Info size={12} />
-                    Authentication templates use a fixed format required by Meta.
+                {form.headerType === 'TEXT' ? (
+                  <div className="mt-4">
+                    <input
+                      id="tpl-header"
+                      type="text"
+                      placeholder="Short header text (max 60 chars)"
+                      maxLength={60}
+                      value={form.header}
+                      onChange={set('header')}
+                      disabled={isReadOnly}
+                    />
+                    <div className="form-hint">{form.header.length}/60 · Supports {"{{1}}"}</div>
                   </div>
-                </div>
-              ) : (
+                ) : (
+                  <div className="mt-4">
+                    {form.mediaUrl ? (
+                      <div className="media-preview-box">
+                        {form.headerType === 'IMAGE' ? (
+                          <img src={form.mediaUrl} alt="Preview" className="media-preview-thumb" />
+                        ) : (
+                          <div className="media-preview-icon">
+                            {form.headerType === 'VIDEO' ? <VideoIcon size={24} /> : <FileIcon size={24} />}
+                          </div>
+                        )}
+                        <div className="media-preview-info">
+                          <span className="media-preview-url truncate">{form.mediaUrl}</span>
+                          {!isReadOnly && (
+                            <button 
+                              className="media-change-btn"
+                              onClick={() => setIsMediaPickerOpen(true)}
+                            >
+                              Change
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="media-select-placeholder"
+                        onClick={() => setIsMediaPickerOpen(true)}
+                        disabled={isReadOnly}
+                      >
+                        <Plus size={20} />
+                        <span>Select {form.headerType.toLowerCase()} from library</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── BODY (Always Visible) ── */}
+          <div className="builder-section">
+            <div className="builder-section-header">
+              <h2 className="builder-section-title">Body *</h2>
+            </div>
+            
+            {form.variant === 'otp' ? (
+              <div className="auth-body-locked">
                 <textarea
                   id="tpl-body"
-                  rows={5}
-                  placeholder={'Hi {{1}}, your order {{2}} has been confirmed!\n\nThank you for shopping with us.'}
-                  value={form.body}
-                  onChange={set('body')}
-                  className={errors.body ? 'error' : ''}
-                  disabled={isReadOnly}
+                  rows={3}
+                  value={AUTH_BODY}
+                  readOnly
+                  className="locked-input"
                 />
-              )}
-              <div className="form-hint">
-                {form.category === 'AUTHENTICATION' ? 'Fixed' : `${form.body.length}/1024`} · Use {'{{'} 1 {'}}'}, {'{{'} 2 {'}}'} etc. for variables
+                <div className="auth-notice">
+                  <Info size={12} />
+                  Authentication templates use a fixed format required by Meta.
+                </div>
               </div>
-              {errors.body && <span className="form-error">{errors.body}</span>}
+            ) : (
+              <textarea
+                id="tpl-body"
+                rows={5}
+                placeholder={'Hi {{1}}, your order {{2}} has been confirmed!\n\nThank you for shopping with us.'}
+                value={form.body}
+                onChange={set('body')}
+                className={errors.body ? 'error' : ''}
+                disabled={isReadOnly}
+              />
+            )}
+            <div className="form-hint">
+              {form.variant === 'otp' ? 'Fixed' : `${form.body.length}/1024`} · Use {'{{'} 1 {'}}'}, {'{{'} 2 {'}}'} etc. for variables
             </div>
+            {errors.body && <span className="form-error">{errors.body}</span>}
+          </div>
 
-            {/* Footer */}
+          {/* Footer */}
+          <div className="builder-section">
             <div className="form-group">
               <label className="form-label" htmlFor="tpl-footer">
-                Footer <span className="form-label-optional">(Optional)</span>
+                Footer <span className="label-optional">(Optional)</span>
               </label>
               <input
                 id="tpl-footer"
                 type="text"
-                placeholder={form.category === 'AUTHENTICATION' ? AUTH_FOOTER : "e.g. Reply STOP to unsubscribe"}
+                placeholder={form.variant === 'otp' ? AUTH_FOOTER : "e.g. Reply STOP to unsubscribe"}
                 maxLength={60}
-                value={form.category === 'AUTHENTICATION' ? (form.footer || AUTH_FOOTER) : form.footer}
+                value={form.variant === 'otp' ? (form.footer || AUTH_FOOTER) : form.footer}
                 onChange={set('footer')}
-                disabled={isReadOnly || form.category === 'AUTHENTICATION'}
+                disabled={isReadOnly || form.variant === 'otp'}
               />
-              <div className="form-hint">{form.category === 'AUTHENTICATION' ? 'Required for Authentication' : `${form.footer.length}/60`}</div>
+              <div className="form-hint">{form.variant === 'otp' ? 'Required for Authentication' : `${form.footer ? form.footer.length : 0}/60`}</div>
             </div>
           </div>
 
-          {/* Marketing Specialized: Limited Time Offer */}
-          {form.category === 'MARKETING' && (
+
+          {/* ── LIMITED TIME OFFER (Progressive Disclosure) ── */}
+          {form.variant === 'lto' && (
             <div className="builder-section">
               <div className="builder-section-header">
                 <h2 className="builder-section-title">
+                  <div className="builder-section-badge">Premium</div>
                   Limited-Time Offer
-                  <span className="builder-section-badge">New</span>
                 </h2>
                 <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input 
@@ -532,7 +596,7 @@ export default function TemplateBuilder() {
             </div>
           )}
 
-          <div className="builder-divider" />
+          <div className="builder-divider"></div>
 
           {/* Variables */}
           {variables.length > 0 && (
@@ -565,7 +629,7 @@ export default function TemplateBuilder() {
                   </div>
                 ))}
               </div>
-              <div className="builder-divider" />
+              <div className="builder-divider"></div>
             </>
           )}
 
@@ -573,17 +637,25 @@ export default function TemplateBuilder() {
           <div className="builder-section">
             <div className="builder-section-header">
               <h2 className="builder-section-title">Buttons</h2>
-              <button
-                className="builder-add-btn"
-                onClick={addButton}
-                disabled={isReadOnly || form.buttons.length >= 3}
-              >
-                <Plus size={14} /> Add Button
-              </button>
+              {!isReadOnly && form.buttons.length < 3 && form.variant !== 'otp' && form.variant !== 'catalog' && (
+                <button className="builder-add-btn" onClick={addButton}>
+                  <Plus size={14} /> Add Button
+                </button>
+              )}
             </div>
-            <p className="builder-section-hint">
-              Optional. Max 3 buttons. Quick Reply or Call-to-Action.
-            </p>
+
+            {form.variant === 'otp' && (
+              <div className="form-hint mb-4" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Info size={14} className="text-primary" />
+                <span>Authentication templates require a fixed "Copy Code" button.</span>
+              </div>
+            )}
+            {form.variant === 'catalog' && (
+              <div className="form-hint mb-4" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Info size={14} className="text-primary" />
+                <span>Catalog templates use a fixed "View Items" button.</span>
+              </div>
+            )}
 
             {form.buttons.length === 0 ? (
               <div className="builder-buttons-empty">No buttons added</div>
@@ -704,13 +776,10 @@ export default function TemplateBuilder() {
               
               {!form.body && !form.header && (
                 <div className="preview-empty-ux">
-                  <div className="ux-gif-wrapper">
-                    <img 
-                      src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJ1ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6ZzZ6JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1z/3o7TKMGpx4RQC9KkAU/giphy.gif" 
-                      alt="Empty"
-                    />
+                  <div className="ux-illustration">
+                    <MessageSquare size={48} strokeWidth={1.5} className="floating" />
                   </div>
-                  <p>Start typing to see the magic happen...</p>
+                  <p>Start typing to see your template come alive...</p>
                 </div>
               )}
             </div>

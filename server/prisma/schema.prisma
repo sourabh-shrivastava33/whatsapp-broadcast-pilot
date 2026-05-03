@@ -16,6 +16,9 @@ model Account {
   businessLabel       String?
   wabaId              String?
   qualityRating       String?
+  messagingLimit      Int?     @default(1000)
+  healthScore         Int?     @default(100)
+  accountMode         String?  @default("SANDBOX") // SANDBOX, PRODUCTION
   isActive            Boolean  @default(false)
   isArchived          Boolean  @default(false)
   createdAt           DateTime @default(now())

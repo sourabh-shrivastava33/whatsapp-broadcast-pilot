@@ -122,7 +122,11 @@ export function useTemplates() {
           headers: { "Content-Type": "application/json" },
         });
         const data = await res.json();
-        if (data.error) throw new Error(data.error);
+        
+        if (!res.ok || data.error) {
+          const detailMsg = data.details ? `\n- ${data.details.join('\n- ')}` : '';
+          throw new Error(data.error + detailMsg);
+        }
 
         // Refetch all templates as multiple account-specific ones were created
         const allRes = await fetch(API_URL);
@@ -131,7 +135,7 @@ export function useTemplates() {
 
         return data;
       } catch (err) {
-        console.error(err);
+        console.error("Submission Error Details:", err);
         throw err;
       }
     },

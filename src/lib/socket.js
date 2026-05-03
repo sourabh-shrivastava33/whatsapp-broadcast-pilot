@@ -12,12 +12,12 @@ export const socket = io(SOCKET_URL, {
 });
 
 const disconnectSocket = () => {
-  if (socket & (socket.connected == true)) {
+  if (socket && (socket.connected == true)) {
     socket.close();
   }
 };
 const connectSocket = () => {
-  if (socket & (socket.connected == false)) {
+  if (socket && (socket.connected == false)) {
     socket.connect();
   }
 };
