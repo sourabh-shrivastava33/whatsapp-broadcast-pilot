@@ -21,7 +21,7 @@ import { ComplianceSkeleton } from './compliance/ComplianceSkeleton'
 import './Compliance.css'
 
 export default function Compliance() {
-  const { contacts, loading, blockContact, unblockContact } = useContacts()
+  const { contacts, loading, blockContact, unblockContact, fetchContacts } = useContacts()
   const { toast } = useToast()
   const [search, setSearch] = useState('')
   const [filterMode, setFilterMode] = useState('all') // all, opted_in, opted_out, blocklisted
@@ -94,7 +94,7 @@ export default function Compliance() {
       }).filter(c => !!c.phone)
 
       try {
-        const res = await fetch('http://127.0.0.1:3001/api/contacts/import', {
+        const res = await fetch(`${config.API_URL}/contacts/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contacts: parsedContacts })
@@ -102,7 +102,7 @@ export default function Compliance() {
         const data = await res.json()
         if (data.success) {
           toast({ type: 'success', title: 'Import Successful', message: `Imported ${data.processed} opted-in contacts.` })
-          setTimeout(() => window.location.reload(), 1000) // Lazy refresh context
+          fetchContacts()
         } else {
           toast({ type: 'error', title: 'Import Failed', message: data.error })
         }
@@ -113,7 +113,7 @@ export default function Compliance() {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
     reader.readAsText(file)
-  }, [toast])
+  }, [fetchContacts, toast])
 
   const exportCsv = useCallback(() => {
     let csv = 'Name,Phone,Opt-In Status,Method,Blocklisted,Opt-Out Reason\n'

@@ -5,8 +5,7 @@
 .template-builder {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
 }
 
 /* Top bar */
@@ -72,7 +71,6 @@
   grid-template-columns: 1fr 380px;
   align-items: flex-start;
   flex: 1;
-  overflow: hidden;
   min-height: 0;
 }
 
@@ -96,7 +94,6 @@
 
 /* Form panel */
 .builder-form-panel {
-  overflow-y: auto;
   padding: var(--space-xl) var(--space-2xl);
   border-right: 1px solid var(--border-subtle);
 }

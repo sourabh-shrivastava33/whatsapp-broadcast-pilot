@@ -92,6 +92,7 @@
   --font-weight-bold: 700;
   --line-height-tight: 1.25;
   --line-height-normal: 1.6;
+  --glass-premium: rgba(255, 255, 255, 0.03);
 }
 
 @media (max-width: 768px) {
@@ -140,6 +141,59 @@
   --accent-hover: #10b981;
 }
 
+/* ---------- Premium Global Styles ---------- */
+::selection {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* Force modern typography */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ---------- Glassmorphism & Effects ---------- */
+.glass-premium {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .glass-premium {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  transition: all var(--transition-normal);
+}
+
+.glass-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-default);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Premium Gradients */
+.bg-gradient-mesh {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background-color: var(--bg-root);
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(160, 100%, 15%, 0.1) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(200, 100%, 15%, 0.1) 0px, transparent 50%);
+  opacity: 0.5;
+  filter: blur(60px);
+}
+
 /* ---------- Reset ---------- */
 *,
 *::before,
@@ -176,7 +230,7 @@
 }
 
 html {
-  font-size: 16px;
+  height: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -188,12 +242,15 @@ body {
   line-height: var(--line-height-normal);
   color: var(--text-primary);
   background: var(--bg-root);
-  overflow-x: hidden;
-  min-height: 100vh;
+  overflow: hidden; /* Prevent global scroll */
+  height: 100vh;
+  width: 100vw;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
 a {

@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import Users from 'lucide-react/dist/esm/icons/users'
 import UserPlus from 'lucide-react/dist/esm/icons/user-plus'
+import Upload from 'lucide-react/dist/esm/icons/upload'
 import Search from 'lucide-react/dist/esm/icons/search'
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui/EmptyState'
 import { Modal } from '../components/ui/Modal'
 import { ContactFormModal } from '../components/ui/ContactFormModal'
+import { ContactImportModal } from '../components/ui/ContactImportModal'
 import { useContacts } from '../store/ContactsContext'
 import { ContactRow } from './contacts/ContactRow'
 import { ContactsSkeleton } from './contacts/ContactsSkeleton'
@@ -13,10 +15,11 @@ import './Contacts.css'
 
 export default function Contacts() {
   const [showFormModal, setShowFormModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [editingContact, setEditingContact] = useState(null)
   const [deletingContact, setDeletingContact] = useState(null)
   const [search, setSearch] = useState('')
-  const { contacts, loading, deleteContact } = useContacts()
+  const { contacts, loading, deleteContact, fetchContacts } = useContacts()
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -66,6 +69,9 @@ export default function Contacts() {
           </p>
         </div>
         <div className="page-actions">
+          <Button variant="ghost" icon={Upload} onClick={() => setShowImportModal(true)}>
+            Import
+          </Button>
           <Button variant="primary" icon={UserPlus} onClick={openAdd}>
             Add Contact
           </Button>
@@ -94,7 +100,7 @@ export default function Contacts() {
         <EmptyState
           icon={Users}
           title="No contacts added yet"
-          description="Add contacts to build your recipient list. You can add them individually or import in bulk later."
+          description="Add contacts to build your recipient list. You can add them individually or import in bulk."
           actionLabel="Add Contact"
           actionIcon={UserPlus}
           onAction={openAdd}
@@ -125,6 +131,13 @@ export default function Contacts() {
         editContact={editingContact}
       />
 
+      {/* Import Modal */}
+      <ContactImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImported={fetchContacts}
+      />
+
       {/* Delete Confirmation */}
       <Modal
         isOpen={!!deletingContact}
@@ -145,5 +158,3 @@ export default function Contacts() {
     </div>
   )
 }
-
-

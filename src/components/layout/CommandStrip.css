@@ -8,16 +8,15 @@
   left: 0;
   right: 0;
   height: var(--command-strip-height);
-  background: var(--bg-surface); /* More solid background */
+  background: var(--bg-sidebar); 
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 4000; /* Highest priority */
-  backdrop-filter: var(--blur-premium);
-  -webkit-backdrop-filter: var(--blur-premium);
+  z-index: 4000;
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
   overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .command-strip-inner {

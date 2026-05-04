@@ -24,6 +24,7 @@ export function AppLayout({ children }) {
 
   return (
     <div className={`app-layout ${isMobile ? 'is-mobile' : ''}`}>
+      <div className="bg-gradient-mesh" />
       <CommandStrip />
       
       {isMobile && (
@@ -60,9 +61,12 @@ export function AppLayout({ children }) {
         className="app-content" 
         style={{ 
           marginLeft: isMobile ? '0' : sidebarWidth,
-          padding: isMobile 
-            ? 'calc(var(--command-strip-height) + var(--mobile-header-height) + 16px) 16px 80px' 
-            : `calc(var(--command-strip-height) + 20px) 40px 20px` /* Top, Horizontal, Bottom */
+          paddingTop: isMobile 
+            ? 'calc(var(--command-strip-height) + var(--mobile-header-height) + 16px)' 
+            : `calc(var(--command-strip-height) + 20px)`,
+          paddingBottom: isMobile ? '80px' : '20px',
+          paddingLeft: isMobile ? '16px' : '40px',
+          paddingRight: isMobile ? '16px' : '40px',
         }}
       >
         <div className="page-container">
