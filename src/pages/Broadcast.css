@@ -2,39 +2,174 @@
    Broadcast Page — Premium Wizard Design
    ============================================ */
 
-.broadcast-page { max-width: var(--page-max-width); margin: 0 auto; }
+.broadcast-page { 
+  width: 100%;
+  padding: 0 var(--space-xl) var(--space-xl);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 40px 0;
+  gap: var(--space-xl);
+}
+
+.page-header-left {
+  flex: 1;
+}
+
+.broadcast-page .page-title {
+  font-size: 32px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+
+.broadcast-page .page-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+  max-width: 600px;
+}
 
 /* ── Broadcast List Row ────────────────────── */
-.broadcasts-list { display: flex; flex-direction: column; gap: 2px; }
+.broadcasts-list { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 12px; /* Increased gap */
+}
 
 .broadcast-row {
-  display: flex; align-items: center; gap: var(--space-md);
-  padding: var(--space-md) var(--space-lg);
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  display: flex; 
+  align-items: center; 
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--bg-card); 
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  transition: all var(--transition-normal);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
 }
+
 .broadcast-row.clickable { cursor: pointer; }
-.broadcast-row.clickable:hover { background: var(--bg-card-hover); border-color: var(--border-default); }
+
+.broadcast-row.clickable:hover { 
+  background: var(--bg-card-hover); 
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), 0 0 20px rgba(16, 185, 129, 0.1);
+}
 
 .broadcast-row-icon {
-  width: 40px; height: 40px; border-radius: var(--radius-md);
-  background: var(--accent-dim); color: var(--accent);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 48px; 
+  height: 48px; 
+  border-radius: var(--radius-lg);
+  background: var(--accent-dim); 
+  color: var(--accent);
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  flex-shrink: 0;
+  box-shadow: inset 0 0 10px rgba(16, 185, 129, 0.1);
 }
-.broadcast-row-info { flex: 1; min-width: 0; }
-.broadcast-row-title { font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
-.broadcast-row-date { display: flex; align-items: center; gap: 5px; font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 3px; }
-.broadcast-row-status-group { display: flex; align-items: center; gap: var(--space-sm); flex-shrink: 0; }
-.broadcast-stats-mini { display: flex; gap: var(--space-sm); }
-.broadcast-stats-mini span { display: flex; align-items: center; gap: 4px; font-size: var(--font-size-xs); color: var(--text-secondary); }
 
-.chip { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-size-xs); font-weight: var(--font-weight-medium); padding: 3px 10px; border-radius: var(--radius-chip); }
-.chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.chip-sending { color: #60a5fa; background: rgba(96,165,250,0.12); }
-.chip-sent { color: var(--accent); background: var(--accent-dim); }
-.chip-failed { color: #ef4444; background: rgba(239,68,68,0.12); }
-.chip-completed_with_errors { color: #f59e0b; background: rgba(245,158,11,0.12); }
+.broadcast-row-info { flex: 1; min-width: 0; }
+
+.broadcast-row-title { 
+  font-size: var(--font-size-md); 
+  font-weight: 700; 
+  color: var(--text-primary); 
+  margin-bottom: 4px;
+}
+
+.broadcast-row-date { 
+  display: flex; 
+  align-items: center; 
+  gap: 6px; 
+  font-size: 12px; 
+  color: var(--text-muted); 
+}
+
+.broadcast-row-status-group { 
+  display: flex; 
+  align-items: center; 
+  gap: var(--space-md); 
+  flex-shrink: 0; 
+}
+
+.broadcast-stats-mini { 
+  display: flex; 
+  gap: 16px; 
+}
+
+.broadcast-stats-mini span { 
+  display: flex; 
+  align-items: center; 
+  gap: 6px; 
+  font-size: 12px; 
+  color: var(--text-secondary); 
+  font-weight: 600;
+}
+
+.chip { 
+  display: inline-flex; 
+  align-items: center; 
+  gap: 6px; 
+  font-size: 11px; 
+  font-weight: 700; 
+  padding: 4px 12px; 
+  border-radius: var(--radius-chip); 
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chip-dot { 
+  width: 6px; 
+  height: 6px; 
+  border-radius: 50%; 
+  background: currentColor; 
+  box-shadow: 0 0 8px currentColor;
+}
+
+.chip-sending { 
+  color: #3b82f6; 
+  background: rgba(59, 130, 246, 0.1); 
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.chip-sent { 
+  color: var(--accent); 
+  background: var(--accent-dim); 
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.chip-failed { 
+  color: #ef4444; 
+  background: rgba(239, 68, 68, 0.1); 
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.chip-completed_with_errors { 
+  color: #f59e0b; 
+  background: rgba(245, 158, 11, 0.1); 
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+@keyframes pulse-dot {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.chip-sending .chip-dot {
+  animation: pulse-dot 1.5s infinite;
+}
 
 .row-hover-icon { color: var(--text-muted); flex-shrink: 0; }
 .chip-xs { font-size: 11px; font-weight: var(--font-weight-medium); padding: 2px 8px; border-radius: var(--radius-chip); background: var(--border-subtle); color: var(--text-secondary); }
@@ -50,10 +185,24 @@
 
 /* ── Progress Bar ──────────────────────────── */
 .wiz-progress-bar {
-  display: flex; align-items: center; gap: 0;
-  padding: var(--space-md) var(--space-xl);
+  display: flex; 
+  align-items: center; 
+  gap: 0;
+  padding: 32px var(--space-xl);
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border-subtle);
   overflow-x: auto;
+  position: relative;
+}
+.wiz-progress-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.3;
 }
 .wiz-progress-step { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 70px; }
 .wiz-progress-dot {

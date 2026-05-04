@@ -1,0 +1,35 @@
+services:
+  - type: static
+    name: whatsapp-frontend
+    repo: https://github.com/<your-org>/<repo>
+    branch: main
+    buildCommand: npm ci && npm run build
+    publishPath: dist
+    env:
+      VITE_API_URL: https://<backend>.onrender.com
+
+  - type: web
+    name: whatsapp-backend
+    repo: https://github.com/<your-org>/<repo>
+    branch: main
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npx prisma migrate deploy && npm start
+    env:
+      DATABASE_URL: $DATABASE_URL
+      REDIS_URL: $REDIS_URL
+      SUPABASE_URL: $SUPABASE_URL
+      SUPABASE_SECRET_KEY: $SUPABASE_SECRET_KEY
+      WEBHOOK_VERIFY_TOKEN: $WEBHOOK_VERIFY_TOKEN
+      NODE_ENV: production
+
+  - type: worker
+    name: whatsapp-worker
+    repo: https://github.com/<your-org>/<repo>
+    branch: main
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: node worker.js
+    env:
+      DATABASE_URL: $DATABASE_URL
+      REDIS_URL: $REDIS_URL

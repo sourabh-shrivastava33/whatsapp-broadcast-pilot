@@ -18,3 +18,16 @@ export const broadcastQueue = new Queue('broadcast-queue', {
     removeOnFail: false,
   },
 });
+
+export const incomingMessageQueue = new Queue('incoming-message-queue', {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 1000,
+    },
+    removeOnComplete: true,
+    removeOnFail: false,
+  },
+});

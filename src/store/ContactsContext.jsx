@@ -2,7 +2,8 @@ import config from '../config.js';
 /**
  * ContactsContext — manages broadcast recipients.
  */
-import React, { createContext, useContext, useReducer, useEffect } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
+import { socket } from '../lib/socket'
 
 const ContactsContext = createContext(null)
 const API_URL = config.API_URL + "/contacts"
@@ -15,6 +16,13 @@ function reducer(state, action) {
       return { ...state, contacts: action.payload, loading: false }
     case 'ADD_CONTACT':
       return { ...state, contacts: [...state.contacts, action.payload] }
+    case 'UPSERT_CONTACT': {
+      const exists = state.contacts.some((c) => c.id === action.payload.id)
+      const contacts = exists
+        ? state.contacts.map((c) => (c.id === action.payload.id ? { ...c, ...action.payload } : c))
+        : [action.payload, ...state.contacts]
+      return { ...state, contacts }
+    }
     case 'UPDATE_CONTACT': {
       const contacts = state.contacts.map((c) =>
         c.id === action.payload.id ? { ...c, ...action.payload } : c
@@ -33,18 +41,39 @@ function reducer(state, action) {
 export function ContactsProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
 
+  const fetchContacts = useCallback(async () => {
+    try {
+      const res = await fetch(API_URL)
+      const data = await res.json()
+      dispatch({ type: 'SET_CONTACTS', payload: Array.isArray(data) ? data : [] })
+      return data
+    } catch (err) {
+      console.error('Failed to fetch contacts', err)
+      dispatch({ type: 'SET_CONTACTS', payload: [] })
+      return []
+    }
+  }, [])
+
   useEffect(() => {
-    fetch(API_URL)
-      .then(res => res.json())
-      .then(data => dispatch({ type: 'SET_CONTACTS', payload: data }))
-      .catch(err => {
-        console.error('Failed to fetch contacts', err)
-        dispatch({ type: 'SET_CONTACTS', payload: [] })
-      })
+    fetchContacts()
+  }, [fetchContacts])
+
+  useEffect(() => {
+    const upsertContact = (contact) => {
+      if (contact?.id) dispatch({ type: 'UPSERT_CONTACT', payload: contact })
+    }
+    const handleNewMessage = (payload) => upsertContact(payload?.contact)
+
+    socket.on('new_message', handleNewMessage)
+    socket.on('contact_updated', upsertContact)
+    return () => {
+      socket.off('new_message', handleNewMessage)
+      socket.off('contact_updated', upsertContact)
+    }
   }, [])
 
   return (
-    <ContactsContext.Provider value={{ state, dispatch }}>
+    <ContactsContext.Provider value={{ state, dispatch, fetchContacts }}>
       {children}
     </ContactsContext.Provider>
   )
@@ -53,10 +82,11 @@ export function ContactsProvider({ children }) {
 export function useContacts() {
   const ctx = useContext(ContactsContext)
   if (!ctx) throw new Error('useContacts must be inside ContactsProvider')
-  const { state, dispatch } = ctx
+  const { state, dispatch, fetchContacts } = ctx
   return {
     contacts: state.contacts,
     loading: state.loading,
+    fetchContacts,
     
     addContact: async (payload) => {
       try {
@@ -66,7 +96,7 @@ export function useContacts() {
           body: JSON.stringify(payload)
         })
         const data = await res.json()
-        dispatch({ type: 'ADD_CONTACT', payload: data })
+        dispatch({ type: 'UPSERT_CONTACT', payload: data })
       } catch (err) {
         console.error(err)
       }
@@ -75,7 +105,7 @@ export function useContacts() {
     updateContact: async (payload) => {
       try {
         const res = await fetch(`${API_URL}/${payload.id}`, {
-          method: 'PUT',
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         })

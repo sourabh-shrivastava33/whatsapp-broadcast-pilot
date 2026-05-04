@@ -24,8 +24,14 @@ import {
   sendSuccess,
   sendError,
   calculateHash,
+  sanitizeAccount,
+  fetchWithTimeout,
+  normalizePhone,
+  logAction,
 } from "./utils.js";
 import { initSocket, getIO } from "./socket.js";
+import { getWhatsAppMediaUrl } from "./whatsapp.js";
+import { getInboundOptInData } from "./leadOptIn.js";
 
 dotenv.config();
 
@@ -93,8 +99,9 @@ const generalLimiter = rateLimit({
 });
 
 // Import worker AFTER io is initialized to avoid circular dependency
-import { broadcastQueue } from "./queue.js";
+import { broadcastQueue, incomingMessageQueue } from "./queue.js";
 import "./worker.js";
+import "./agentic/worker.js";
 
 /** Broadcast limiter: 10 per 15 minutes (prevent runaway broadcast triggers) */
 const broadcastLimiter = rateLimit({
@@ -194,35 +201,41 @@ app.post("/api/media/upload", upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
     const { tags, campaign, language, purpose, folderId } = req.body;
-    
+
     // 1. Calculate Hash for Duplicate Detection
     const hash = calculateHash(file.buffer);
     const existingMedia = await prisma.media.findFirst({
-      where: { metadata: { path: ['hash'], equals: hash } }
+      where: { metadata: { path: ["hash"], equals: hash } },
     });
 
     if (existingMedia) {
-      logger.info(`♻️ Duplicate media detected: ${existingMedia.id}`, { correlationId });
+      logger.info(`♻️ Duplicate media detected: ${existingMedia.id}`, {
+        correlationId,
+      });
       return sendSuccess(res, existingMedia);
     }
 
     const fileExt = path.extname(file.originalname);
     const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
-    
+
     // 2. Upload to Supabase 'media' bucket
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("media")
       .upload(fileName, file.buffer, {
         contentType: file.mimetype,
-        upsert: false
+        upsert: false,
       });
 
     if (uploadError) {
-      return sendError(res, uploadError, "Cloud storage upload failed", 500, { correlationId });
+      return sendError(res, uploadError, "Cloud storage upload failed", 500, {
+        correlationId,
+      });
     }
 
     // 3. Get Public URL
-    const { data: urlData } = supabase.storage.from("media").getPublicUrl(fileName);
+    const { data: urlData } = supabase.storage
+      .from("media")
+      .getPublicUrl(fileName);
     const fileUrl = urlData.publicUrl;
 
     // 4. Determine media type based on mimetype
@@ -238,7 +251,7 @@ app.post("/api/media/upload", upload.single("file"), async (req, res) => {
         filename: fileName,
         type: type,
         size: file.size,
-        tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [],
+        tags: tags ? (typeof tags === "string" ? JSON.parse(tags) : tags) : [],
         campaign: campaign || null,
         language: language || null,
         purpose: purpose || null,
@@ -246,36 +259,49 @@ app.post("/api/media/upload", upload.single("file"), async (req, res) => {
         metadata: {
           hash,
           mimetype: file.mimetype,
-          originalName: file.originalname
+          originalName: file.originalname,
           // Future: add width, height if image
-        }
+        },
       },
     });
 
-    logger.info(`✅ Media uploaded successfully: ${media.id}`, { correlationId });
+    logger.info(`✅ Media uploaded successfully: ${media.id}`, {
+      correlationId,
+    });
     res.json(media);
   } catch (error) {
-    return sendError(res, error, "Failed to process media", 500, { correlationId });
+    return sendError(res, error, "Failed to process media", 500, {
+      correlationId,
+    });
   }
 });
 
 app.get("/api/media", async (req, res) => {
   try {
-    const { type, campaign, archived, folderId, page = 1, limit = 20, sort = 'desc', search } = req.query;
+    const {
+      type,
+      campaign,
+      archived,
+      folderId,
+      page = 1,
+      limit = 20,
+      sort = "desc",
+      search,
+    } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
     const where = {
-      ...(type && type !== 'ALL' && { type }),
+      ...(type && type !== "ALL" && { type }),
       ...(campaign && { campaign }),
       ...(folderId && { folderId }),
-      isArchived: archived === 'true',
+      isArchived: archived === "true",
       ...(search && {
         OR: [
-          { filename: { contains: search, mode: 'insensitive' } },
-          { campaign: { contains: search, mode: 'insensitive' } },
-          { tags: { array_contains: search } }
-        ]
-      })
+          { filename: { contains: search, mode: "insensitive" } },
+          { campaign: { contains: search, mode: "insensitive" } },
+          { tags: { array_contains: search } },
+        ],
+      }),
     };
 
     const [media, total] = await Promise.all([
@@ -284,9 +310,9 @@ app.get("/api/media", async (req, res) => {
         orderBy: { createdAt: sort },
         skip,
         take: parseInt(limit),
-        include: { folder: true }
+        include: { folder: true },
       }),
-      prisma.media.count({ where })
+      prisma.media.count({ where }),
     ]);
 
     res.json({
@@ -295,8 +321,8 @@ app.get("/api/media", async (req, res) => {
         total,
         page: parseInt(page),
         limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
-      }
+        pages: Math.ceil(total / parseInt(limit)),
+      },
     });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch media library" });
@@ -306,8 +332,11 @@ app.get("/api/media", async (req, res) => {
 app.post("/api/media/:id/duplicate", async (req, res) => {
   const { correlationId } = req;
   try {
-    const original = await prisma.media.findUnique({ where: { id: req.params.id } });
-    if (!original) return sendError(res, null, "Media not found", 404, { correlationId });
+    const original = await prisma.media.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!original)
+      return sendError(res, null, "Media not found", 404, { correlationId });
 
     const copy = await prisma.media.create({
       data: {
@@ -317,7 +346,7 @@ app.post("/api/media/:id/duplicate", async (req, res) => {
         createdAt: undefined,
         updatedAt: undefined,
         usageCount: 0,
-      }
+      },
     });
     sendSuccess(res, copy);
   } catch (error) {
@@ -331,7 +360,7 @@ app.patch("/api/media/:id/move", async (req, res) => {
     const { folderId } = req.body;
     const media = await prisma.media.update({
       where: { id: req.params.id },
-      data: { folderId: folderId || null }
+      data: { folderId: folderId || null },
     });
     sendSuccess(res, media);
   } catch (error) {
@@ -343,7 +372,7 @@ app.get("/api/folders", async (req, res) => {
   try {
     const folders = await prisma.folder.findMany({
       include: { _count: { select: { media: true } } },
-      orderBy: { name: 'asc' }
+      orderBy: { name: "asc" },
     });
     res.json(folders);
   } catch (error) {
@@ -355,7 +384,7 @@ app.post("/api/folders", async (req, res) => {
   try {
     const { name, parentId } = req.body;
     const folder = await prisma.folder.create({
-      data: { name, parentId }
+      data: { name, parentId },
     });
     res.json(folder);
   } catch (error) {
@@ -376,7 +405,7 @@ app.patch("/api/media/:id", async (req, res) => {
         ...(purpose !== undefined && { purpose }),
         ...(status && { status }),
         ...(isArchived !== undefined && { isArchived }),
-      }
+      },
     });
     sendSuccess(res, media);
   } catch (error) {
@@ -389,10 +418,10 @@ app.post("/api/media/:id/archive", async (req, res) => {
   try {
     const media = await prisma.media.update({
       where: { id: req.params.id },
-      data: { 
+      data: {
         isArchived: true,
-        status: 'archived'
-      }
+        status: "archived",
+      },
     });
     sendSuccess(res, media);
   } catch (error) {
@@ -403,20 +432,23 @@ app.post("/api/media/:id/archive", async (req, res) => {
 app.get("/api/media/:id/usage", async (req, res) => {
   const { correlationId } = req;
   try {
-    const media = await prisma.media.findUnique({ where: { id: req.params.id } });
-    if (!media) return sendError(res, null, "Media not found", 404, { correlationId });
+    const media = await prisma.media.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!media)
+      return sendError(res, null, "Media not found", 404, { correlationId });
 
     // Find templates using this URL
     const templates = await prisma.template.findMany({
       where: { mediaUrl: media.url },
-      select: { id: true, name: true, status: true }
+      select: { id: true, name: true, status: true },
     });
 
     // Find chat messages using this URL
     const messages = await prisma.chatMessage.findMany({
       where: { mediaUrl: media.url },
       select: { id: true, contactId: true, timestamp: true },
-      take: 10
+      take: 10,
     });
 
     sendSuccess(res, { templates, recentMessages: messages });
@@ -428,16 +460,25 @@ app.get("/api/media/:id/usage", async (req, res) => {
 app.delete("/api/media/:id", async (req, res) => {
   const { correlationId } = req;
   try {
-    const media = await prisma.media.findUnique({ where: { id: req.params.id } });
-    if (!media) return sendError(res, null, "Media not found", 404, { correlationId });
+    const media = await prisma.media.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!media)
+      return sendError(res, null, "Media not found", 404, { correlationId });
 
     // Safety check: is it used in any templates?
     const usageCount = await prisma.template.count({
-      where: { mediaUrl: media.url }
+      where: { mediaUrl: media.url },
     });
 
     if (usageCount > 0) {
-      return sendError(res, null, "Cannot delete media currently in use by templates", 400, { correlationId });
+      return sendError(
+        res,
+        null,
+        "Cannot delete media currently in use by templates",
+        400,
+        { correlationId },
+      );
     }
 
     // Delete from Supabase
@@ -446,7 +487,10 @@ app.delete("/api/media/:id", async (req, res) => {
       .remove([media.filename]);
 
     if (storageError) {
-      logger.error("Supabase delete error", { correlationId, error: storageError });
+      logger.error("Supabase delete error", {
+        correlationId,
+        error: storageError,
+      });
       // Proceed with DB delete anyway if storage is gone or error is just "not found"
     }
 
@@ -493,9 +537,9 @@ app.get("/api/audit-logs", async (req, res) => {
  */
 async function resolveMetaMedia(handle, accessToken) {
   if (!handle) return null;
-  
+
   // If it's already a full URL (often the case with some Meta API responses), return it directly
-  if (handle.startsWith('http')) return handle;
+  if (handle.startsWith("http")) return handle;
 
   try {
     // 1. Get metadata for the handle/ID
@@ -889,86 +933,114 @@ app.get("/api/accounts/:id/health", async (req, res) => {
     const account = await prisma.account.findUnique({
       where: { id: req.params.id },
     });
-    if (!account) return sendError(res, null, "Account not found", 404, { correlationId });
+    if (!account)
+      return sendError(res, null, "Account not found", 404, { correlationId });
 
-    logger.info(`🏥 Deep Health Check: ${account.displayName}`, { correlationId });
+    logger.info(`🏥 Deep Health Check: ${account.displayName}`, {
+      correlationId,
+    });
 
     // 1. Fetch Phone Metrics
     const phoneRes = await fetchWithTimeout(
       `${META_API_BASE_URL}/${META_API_VERSION}/${account.phoneNumberId}?fields=messaging_limit_tier,quality_rating,status,id,display_phone_number,verified_name`,
-      { headers: { Authorization: `Bearer ${account.accessToken}` } }
+      { headers: { Authorization: `Bearer ${account.accessToken}` } },
     );
     const phoneData = await phoneRes.json();
 
     if (!phoneRes.ok) {
-      const isExpired = phoneData.error?.code === 190 || phoneData.error?.error_subcode === 463 || phoneData.error?.error_subcode === 467;
-      const errorMsg = isExpired ? "Meta Session Expired. Please update your Access Token in Account Settings." : "Meta Phone API Error";
-      logger.warn(`⚠️ Phone health check failed`, { correlationId, error: phoneData.error });
-      return sendError(res, phoneData.error, errorMsg, isExpired ? 401 : phoneRes.status, { correlationId });
+      const isExpired =
+        phoneData.error?.code === 190 ||
+        phoneData.error?.error_subcode === 463 ||
+        phoneData.error?.error_subcode === 467;
+      const errorMsg = isExpired
+        ? "Meta Session Expired. Please update your Access Token in Account Settings."
+        : "Meta Phone API Error";
+      logger.warn(`⚠️ Phone health check failed`, {
+        correlationId,
+        error: phoneData.error,
+      });
+      return sendError(
+        res,
+        phoneData.error,
+        errorMsg,
+        isExpired ? 401 : phoneRes.status,
+        { correlationId },
+      );
     }
 
     // 2. Fetch WABA Metrics
     const wabaRes = await fetchWithTimeout(
       `${META_API_BASE_URL}/${META_API_VERSION}/${account.wabaId}?fields=id,name,status,account_mode`,
-      { headers: { Authorization: `Bearer ${account.accessToken}` } }
+      { headers: { Authorization: `Bearer ${account.accessToken}` } },
     );
     const wabaData = await wabaRes.json();
 
     if (!wabaRes.ok) {
-      logger.warn(`⚠️ WABA health check failed`, { correlationId, error: wabaData.error });
+      logger.warn(`⚠️ WABA health check failed`, {
+        correlationId,
+        error: wabaData.error,
+      });
     }
 
     // 2.5 Fetch Templates for Quality Overview
     const templatesRes = await fetchWithTimeout(
       `${META_API_BASE_URL}/${META_API_VERSION}/${account.wabaId}/message_templates?limit=5`,
-      { headers: { Authorization: `Bearer ${account.accessToken}` } }
+      { headers: { Authorization: `Bearer ${account.accessToken}` } },
     );
     const templatesData = await templatesRes.json();
     const templates = templatesData.data || [];
 
     // 3. Calculate Precise Health Score (Weighted Algorithm)
     let score = 100;
-    
+
     // Quality Signal (Weight: 60%)
-    if (phoneData.quality_rating === 'YELLOW') score -= 30;
-    else if (phoneData.quality_rating === 'RED') score -= 60;
-    else if (!phoneData.quality_rating || phoneData.quality_rating === 'UNKNOWN') score -= 15;
-    
+    if (phoneData.quality_rating === "YELLOW") score -= 30;
+    else if (phoneData.quality_rating === "RED") score -= 60;
+    else if (
+      !phoneData.quality_rating ||
+      phoneData.quality_rating === "UNKNOWN"
+    )
+      score -= 15;
+
     // Account Verification & Mode (Weight: 20%)
-    if (wabaData.status !== 'APPROVED') score -= 25;
-    if (wabaData.account_mode === 'SANDBOX') score -= 10;
+    if (wabaData.status !== "APPROVED") score -= 25;
+    if (wabaData.account_mode === "SANDBOX") score -= 10;
 
     // Phone Connectivity (Weight: 20%)
-    if (phoneData.status !== 'CONNECTED') {
-      if (phoneData.status === 'FLAGGED' || phoneData.status === 'BLOCKED') score -= 40;
+    if (phoneData.status !== "CONNECTED") {
+      if (phoneData.status === "FLAGGED" || phoneData.status === "BLOCKED")
+        score -= 40;
       else score -= 20;
     }
 
     // Tier Penalty
-    if (phoneData.messaging_limit_tier === 'TIER_100') score -= 5;
+    if (phoneData.messaging_limit_tier === "TIER_100") score -= 5;
 
     score = Math.max(0, score);
 
     // 4. Update Database Cache (Aligned with latest Meta Tiers: 250, 2K, 10K, 100K)
-    const tierMap = { 
-      'TIER_NOT_SET': 250, 
-      'TIER_250': 250,
-      'TIER_1K': 1000, 
-      'TIER_2K': 2000,
-      'TIER_10K': 10000, 
-      'TIER_100K': 100000, 
-      'TIER_UNLIMITED': 999999 
+    const tierMap = {
+      TIER_NOT_SET: 250,
+      TIER_250: 250,
+      TIER_1K: 1000,
+      TIER_2K: 2000,
+      TIER_10K: 10000,
+      TIER_100K: 100000,
+      TIER_UNLIMITED: 999999,
     };
     const limit = tierMap[phoneData.messaging_limit_tier] || 250;
 
     const updateData = {
-      qualityRating: phoneData.quality_rating || 'UNKNOWN',
+      qualityRating: phoneData.quality_rating || "UNKNOWN",
       messagingLimit: limit,
       healthScore: score,
-      accountMode: wabaData.account_mode || 'SANDBOX',
+      accountMode: wabaData.account_mode || "SANDBOX",
     };
 
-    logger.info(`📝 Updating account health in DB for ${account.id}`, { correlationId, updateData });
+    logger.info(`📝 Updating account health in DB for ${account.id}`, {
+      correlationId,
+      updateData,
+    });
 
     try {
       await prisma.account.update({
@@ -976,7 +1048,10 @@ app.get("/api/accounts/:id/health", async (req, res) => {
         data: updateData,
       });
     } catch (dbError) {
-      logger.error(`❌ Prisma update failed for account health: ${dbError.message}`, { correlationId, error: dbError });
+      logger.error(
+        `❌ Prisma update failed for account health: ${dbError.message}`,
+        { correlationId, error: dbError },
+      );
       // We don't want to fail the whole health check if DB update fails, but we should know why
     }
 
@@ -987,21 +1062,23 @@ app.get("/api/accounts/:id/health", async (req, res) => {
         where: {
           broadcast: { accountId: account.id },
           sentAt: { gte: dayAgo },
-          status: { in: ['sent', 'delivered', 'read'] }
-        }
+          status: { in: ["sent", "delivered", "read"] },
+        },
       }),
       prisma.chatMessage.count({
         where: {
           accountId: account.id,
           fromMe: false,
-          timestamp: { gte: dayAgo }
-        }
-      })
+          timestamp: { gte: dayAgo },
+        },
+      }),
     ]);
 
     // Calculate dynamic reset time (Next UTC Midnight)
     const now = new Date();
-    const nextMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const nextMidnight = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+    );
     const diff = nextMidnight - now;
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -1010,66 +1087,109 @@ app.get("/api/accounts/:id/health", async (req, res) => {
     return sendSuccess(res, {
       data: {
         score,
-        status: phoneData.status || 'UNKNOWN',
-        quality: phoneData.quality_rating || 'UNKNOWN',
-        tier: phoneData.messaging_limit_tier || 'TIER_NOT_SET',
+        status: phoneData.status || "UNKNOWN",
+        quality: phoneData.quality_rating || "UNKNOWN",
+        tier: phoneData.messaging_limit_tier || "TIER_NOT_SET",
         limit,
-        mode: wabaData.account_mode || 'SANDBOX',
-        wabaStatus: wabaData.status || 'UNKNOWN',
+        mode: wabaData.account_mode || "SANDBOX",
+        wabaStatus: wabaData.status || "UNKNOWN",
         verifiedName: phoneData.verified_name || account.displayName,
-        displayPhoneNumber: phoneData.display_phone_number || account.displayPhoneNumber,
+        displayPhoneNumber:
+          phoneData.display_phone_number || account.displayPhoneNumber,
         id: account.id,
         lastUpdated: new Date(),
         alerts: deriveAlerts(phoneData, wabaData, score),
         recommendations: deriveRecommendations(phoneData, wabaData, score),
-        templates: templates.map(t => ({
+        templates: templates.map((t) => ({
           name: t.name,
           category: t.category,
           status: t.status,
-          quality: t.quality_score?.score || 'UNKNOWN',
-          lastUpdated: new Date()
+          quality: t.quality_score?.score || "UNKNOWN",
+          lastUpdated: new Date(),
         })),
         risk: {
-          restrictions: wabaData.status === 'APPROVED' ? 'None' : wabaData.status,
+          restrictions:
+            wabaData.status === "APPROVED" ? "None" : wabaData.status,
           violations: 0,
-          spamRate: phoneData.quality_rating === 'GREEN' ? 'Low' : (phoneData.quality_rating === 'YELLOW' ? 'Medium' : 'High'),
-          blocks: phoneData.quality_rating === 'GREEN' ? '0.01%' : (phoneData.quality_rating === 'YELLOW' ? '0.45%' : '2.10%'),
-          reports: phoneData.quality_rating === 'GREEN' ? '0.00%' : '0.05%'
+          spamRate:
+            phoneData.quality_rating === "GREEN"
+              ? "Low"
+              : phoneData.quality_rating === "YELLOW"
+                ? "Medium"
+                : "High",
+          blocks:
+            phoneData.quality_rating === "GREEN"
+              ? "0.01%"
+              : phoneData.quality_rating === "YELLOW"
+                ? "0.45%"
+                : "2.10%",
+          reports: phoneData.quality_rating === "GREEN" ? "0.00%" : "0.05%",
         },
         usage: {
           businessInitiated: businessUsage,
           userInitiated: userUsage,
-          resetTime: resetStr
-        }
-      }
+          resetTime: resetStr,
+        },
+      },
     });
-
   } catch (error) {
-    return sendError(res, error, "Comprehensive health check failed", 500, { correlationId });
+    return sendError(res, error, "Comprehensive health check failed", 500, {
+      correlationId,
+    });
   }
 });
 
 /** Helper to derive alerts based on health state */
 function deriveAlerts(phone, waba, score) {
   const alerts = [];
-  if (phone.quality_rating === 'RED') alerts.push({ type: 'error', message: 'Critical: Account quality is RED. High risk of suspension.', timestamp: new Date() });
-  if (phone.quality_rating === 'YELLOW') alerts.push({ type: 'warning', message: 'Warning: Quality dropped to YELLOW. Review recent templates.', timestamp: new Date() });
-  if (waba.status !== 'APPROVED') alerts.push({ type: 'error', message: `Business account is ${waba.status}. Messaging may be restricted.`, timestamp: new Date() });
-  if (phone.status !== 'CONNECTED') alerts.push({ type: 'warning', message: `Phone number status is ${phone.status}. Check Meta Dashboard.`, timestamp: new Date() });
-  if (waba.account_mode === 'SANDBOX') alerts.push({ type: 'info', message: 'Account is in Sandbox mode. Limits are heavily restricted.', timestamp: new Date() });
+  if (phone.quality_rating === "RED")
+    alerts.push({
+      type: "error",
+      message: "Critical: Account quality is RED. High risk of suspension.",
+      timestamp: new Date(),
+    });
+  if (phone.quality_rating === "YELLOW")
+    alerts.push({
+      type: "warning",
+      message: "Warning: Quality dropped to YELLOW. Review recent templates.",
+      timestamp: new Date(),
+    });
+  if (waba.status !== "APPROVED")
+    alerts.push({
+      type: "error",
+      message: `Business account is ${waba.status}. Messaging may be restricted.`,
+      timestamp: new Date(),
+    });
+  if (phone.status !== "CONNECTED")
+    alerts.push({
+      type: "warning",
+      message: `Phone number status is ${phone.status}. Check Meta Dashboard.`,
+      timestamp: new Date(),
+    });
+  if (waba.account_mode === "SANDBOX")
+    alerts.push({
+      type: "info",
+      message: "Account is in Sandbox mode. Limits are heavily restricted.",
+      timestamp: new Date(),
+    });
   return alerts;
 }
 
 /** Helper to derive recommendations */
 function deriveRecommendations(phone, waba, score) {
   const recs = [];
-  if (score < 90) recs.push("Improve template quality to restore your health score.");
-  if (waba.account_mode === 'SANDBOX') recs.push("Complete business verification to move to production.");
-  if (phone.messaging_limit_tier === 'TIER_1K') recs.push("Send 500+ high-quality messages daily to automatically upgrade to Tier 10K.");
-  if (phone.quality_rating === 'GREEN' && score > 95) recs.push("Account is in peak health. Excellent work!");
+  if (score < 90)
+    recs.push("Improve template quality to restore your health score.");
+  if (waba.account_mode === "SANDBOX")
+    recs.push("Complete business verification to move to production.");
+  if (phone.messaging_limit_tier === "TIER_1K")
+    recs.push(
+      "Send 500+ high-quality messages daily to automatically upgrade to Tier 10K.",
+    );
+  if (phone.quality_rating === "GREEN" && score > 95)
+    recs.push("Account is in peak health. Excellent work!");
   return recs;
 }
-
 
 app.put("/api/accounts/:id/enable", async (req, res) => {
   try {
@@ -1182,6 +1302,9 @@ app.post("/api/contacts/import", async (req, res) => {
             name: c.name || undefined,
             tags: c.tags || undefined,
             notes: c.notes || undefined,
+            brokerageNotes: c.brokerageNotes || undefined,
+            leadStage: c.leadStage || undefined,
+            intentScore: c.intentScore ? Number(c.intentScore) : undefined,
             optInStatus: c.optInStatus || undefined,
             optInMethod: c.optInMethod || undefined,
             optInTimestamp: c.optInTimestamp
@@ -1193,6 +1316,9 @@ app.post("/api/contacts/import", async (req, res) => {
             phone: normalizedPhone,
             tags: c.tags || [],
             notes: c.notes || "",
+            brokerageNotes: c.brokerageNotes || "",
+            leadStage: c.leadStage || "NEW",
+            intentScore: c.intentScore ? Number(c.intentScore) : 0,
             optInStatus: c.optInStatus || "unknown",
             optInMethod: c.optInMethod || null,
             optInTimestamp: c.optInTimestamp
@@ -1434,17 +1560,28 @@ async function uploadMediaToMeta(source, accessToken, appId) {
 
     if (Buffer.isBuffer(source)) {
       fileContent = source;
-    } else if (typeof source === 'string' && (source.startsWith('http') || source.startsWith('https'))) {
+    } else if (
+      typeof source === "string" &&
+      (source.startsWith("http") || source.startsWith("https"))
+    ) {
       const res = await fetch(source);
-      if (!res.ok) throw new Error(`Failed to fetch remote media: ${res.statusText}`);
+      if (!res.ok)
+        throw new Error(`Failed to fetch remote media: ${res.statusText}`);
       fileContent = Buffer.from(await res.arrayBuffer());
-      fileName = source.split('/').pop() || fileName;
-      mimeType = res.headers.get('content-type') || mimeType;
+      fileName = source.split("/").pop() || fileName;
+      mimeType = res.headers.get("content-type") || mimeType;
     } else {
       fileContent = fs.readFileSync(source);
       fileName = path.basename(source);
       const ext = path.extname(source).toLowerCase();
-      mimeType = ext === '.png' ? 'image/png' : (ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : (ext === '.mp4' ? 'video/mp4' : 'application/pdf'));
+      mimeType =
+        ext === ".png"
+          ? "image/png"
+          : ext === ".jpg" || ext === ".jpeg"
+            ? "image/jpeg"
+            : ext === ".mp4"
+              ? "video/mp4"
+              : "application/pdf";
     }
 
     // 1. Create Upload Session
@@ -1453,10 +1590,13 @@ async function uploadMediaToMeta(source, accessToken, appId) {
       {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}` },
-      }
+      },
     );
     const sessionData = await sessionRes.json();
-    if (!sessionRes.ok) throw new Error(sessionData.error?.message || "Failed to create upload session");
+    if (!sessionRes.ok)
+      throw new Error(
+        sessionData.error?.message || "Failed to create upload session",
+      );
 
     const sessionId = sessionData.id;
 
@@ -1471,10 +1611,13 @@ async function uploadMediaToMeta(source, accessToken, appId) {
           "Content-Type": "application/octet-stream",
         },
         body: fileContent,
-      }
+      },
     );
     const uploadData = await uploadRes.json();
-    if (!uploadRes.ok) throw new Error(uploadData.error?.message || "Failed to upload media content");
+    if (!uploadRes.ok)
+      throw new Error(
+        uploadData.error?.message || "Failed to upload media content",
+      );
 
     return uploadData.h; // The handle
   } catch (error) {
@@ -1498,18 +1641,22 @@ async function uploadMessageMediaToMeta(source, accessToken, phoneNumberId) {
     let fileName = "broadcast_media";
     let mimeType = "application/octet-stream";
 
-    if (source && typeof source === 'object' && source.buffer) {
+    if (source && typeof source === "object" && source.buffer) {
       // Multer memory file
       fileContent = source.buffer;
       fileName = source.originalname;
       mimeType = source.mimetype;
-    } else if (typeof source === 'string' && (source.startsWith('http') || source.startsWith('https'))) {
+    } else if (
+      typeof source === "string" &&
+      (source.startsWith("http") || source.startsWith("https"))
+    ) {
       // Remote URL
       const res = await fetch(source);
-      if (!res.ok) throw new Error(`Failed to fetch remote media: ${res.statusText}`);
+      if (!res.ok)
+        throw new Error(`Failed to fetch remote media: ${res.statusText}`);
       fileContent = Buffer.from(await res.arrayBuffer());
-      fileName = source.split('/').pop() || fileName;
-      mimeType = res.headers.get('content-type') || mimeType;
+      fileName = source.split("/").pop() || fileName;
+      mimeType = res.headers.get("content-type") || mimeType;
     } else if (source && source.path) {
       // Multer disk file (fallback)
       fileContent = fs.readFileSync(source.path);
@@ -1533,7 +1680,8 @@ async function uploadMessageMediaToMeta(source, accessToken, phoneNumberId) {
     );
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || "Meta Media Upload Failed");
+    if (!response.ok)
+      throw new Error(data.error?.message || "Meta Media Upload Failed");
 
     return data.id;
   } catch (error) {
@@ -1581,7 +1729,9 @@ app.post("/api/templates/:id/submit", async (req, res) => {
     // Handle Media Header
     let mediaHandle = null;
     if (sourceTemplate.headerType !== "TEXT" && sourceTemplate.mediaUrl) {
-      console.log(`📤 Uploading media to Meta for template approval: ${sourceTemplate.mediaUrl}`);
+      console.log(
+        `📤 Uploading media to Meta for template approval: ${sourceTemplate.mediaUrl}`,
+      );
       mediaHandle = await uploadMediaToMeta(
         sourceTemplate.mediaUrl,
         activeAccounts[0].accessToken,
@@ -1895,6 +2045,7 @@ app.get("/api/broadcasts", async (req, res) => {
 });
 
 app.post("/api/broadcasts", broadcastLimiter, async (req, res) => {
+  const { correlationId } = req;
   try {
     const {
       templateId,
@@ -1953,8 +2104,6 @@ app.post("/api/broadcasts", broadcastLimiter, async (req, res) => {
       });
     }
 
-    const correlationId = crypto.randomUUID();
-
     // ── Create the Broadcast record (use first account as primary for FK) ──
     const broadcast = await prisma.broadcast.create({
       data: {
@@ -1991,7 +2140,9 @@ app.post("/api/broadcasts", broadcastLimiter, async (req, res) => {
       correlationId,
     });
   } catch (error) {
-    return sendError(res, error, "Broadcast initiation failed", 500, { correlationId });
+    return sendError(res, error, "Broadcast initiation failed", 500, {
+      correlationId,
+    });
   }
 });
 
@@ -2008,10 +2159,11 @@ app.get("/api/accounts", async (req, res) => {
     if (!Array.isArray(accounts)) return sendSuccess(res, []);
     return sendSuccess(res, accounts.map(sanitizeAccount));
   } catch (error) {
-    return sendError(res, error, "Failed to fetch accounts", 500, { correlationId });
+    return sendError(res, error, "Failed to fetch accounts", 500, {
+      correlationId,
+    });
   }
 });
-
 
 // Inbox API
 // ============================================
@@ -2366,7 +2518,9 @@ app.post("/api/webhook-settings/meta-sync", async (req, res) => {
       );
       io.emit("sync_status", {
         status: "error",
-        message: subscriptionData.error?.message || `Meta API Error (${subscriptionData.error?.code || 'No code'})`,
+        message:
+          subscriptionData.error?.message ||
+          `Meta API Error (${subscriptionData.error?.code || "No code"})`,
       });
       throw new Error(
         `Meta App Subscription Failed: ${subscriptionData.error?.message || JSON.stringify(subscriptionData.error) || "Unknown Error"}`,
@@ -2480,7 +2634,8 @@ app.get("/api/system/health", async (req, res) => {
       details = "Webhook connection is failing. Check callback URL.";
     } else if (activeAccountsCount === 0) {
       status = "NO_ACCOUNTS";
-      details = "Webhook is healthy, but no active WhatsApp accounts are connected.";
+      details =
+        "Webhook is healthy, but no active WhatsApp accounts are connected.";
     } else {
       status = "READY";
       details = `System is fully operational with ${activeAccountsCount} active account(s).`;
@@ -2684,39 +2839,102 @@ app.post("/api/webhooks", async (req, res) => {
           if (value.messages) {
             for (const msg of value.messages) {
               const { type, text, image, id: metaId } = msg;
-
-              // Find contact by phone (normalize first)
               const phone = normalizePhone(msg.from);
+              const correlationId = crypto.randomUUID();
 
-              let contact = await prisma.contact.findUnique({
-                where: { phone },
+              // Idempotency Check: Don't process the same Meta Message ID twice
+              const existingMsg = await prisma.chatMessage.findUnique({
+                where: { metaMessageId: metaId },
               });
+              if (existingMsg) continue;
 
-              // Auto-create contact if not exists (Lead Generation)
-              if (!contact) {
-                contact = await prisma.contact.create({
-                  data: {
-                    name: value.contacts?.[0]?.profile?.name || "New Lead",
-                    phone,
-                    tags: ["auto-generated"],
-                  },
+              // Find or Auto-create contact (Immediate persistence for UI)
+              // Use upsert to avoid races where two concurrent webhook handlers
+              // try to create the same `phone` and cause a unique-constraint error (P2002).
+              let contact = null;
+              const inboundAt = new Date();
+
+              const contactData = {
+                name: value.contacts?.[0]?.profile?.name || "New Lead",
+                phone,
+                tags: ["auto-generated"],
+                ...getInboundOptInData(null, inboundAt),
+              };
+
+              try {
+                // Use a no-op update to make upsert safe without overwriting existing fields.
+                contact = await prisma.contact.upsert({
+                  where: { phone },
+                  update: {},
+                  create: contactData,
                 });
-                await logAction("CONTACT_AUTO_CREATE", "Contact", contact.id, {
-                  phone,
-                });
+                // Log only when we actually created a contact (createdAt roughly equals now)
+                await logAction(
+                  "CONTACT_AUTO_CREATE",
+                  "Contact",
+                  contact.id,
+                  { phone },
+                  { correlationId },
+                );
+              } catch (err) {
+                // If a unique constraint race occurred (another request created the contact),
+                // fetch the existing contact and continue. Re-throw other errors.
+                if (err && err.code === "P2002") {
+                  contact = await prisma.contact.findUnique({
+                    where: { phone },
+                  });
+                  if (!contact) throw err; // unexpected: rethrow if still missing
+                  logger.info(`Recovered from P2002 race for phone=${phone}`, {
+                    correlationId,
+                  });
+                } else {
+                  throw err;
+                }
               }
 
-              // Store message
+              // Parse Body & Resolve Media
               let bodyText = "";
-              if (type === "text") bodyText = text.body;
-              else if (type === "image") bodyText = "[Image Message]";
-              else if (type === "button") bodyText = msg.button.text;
-              else if (type === "interactive")
+              let mediaUrl = null;
+
+              if (type === "text") {
+                bodyText = text.body;
+              } else if (type === "image") {
+                bodyText = msg.image?.caption || "";
+                const res = await getWhatsAppMediaUrl({
+                  account,
+                  mediaId: msg.image.id,
+                });
+                if (res.success) mediaUrl = res.url;
+              } else if (type === "video") {
+                bodyText = msg.video?.caption || "";
+                const res = await getWhatsAppMediaUrl({
+                  account,
+                  mediaId: msg.video.id,
+                });
+                if (res.success) mediaUrl = res.url;
+              } else if (type === "audio") {
+                const res = await getWhatsAppMediaUrl({
+                  account,
+                  mediaId: msg.audio.id,
+                });
+                if (res.success) mediaUrl = res.url;
+              } else if (type === "document") {
+                bodyText = msg.document?.filename || "Document";
+                const res = await getWhatsAppMediaUrl({
+                  account,
+                  mediaId: msg.document.id,
+                });
+                if (res.success) mediaUrl = res.url;
+              } else if (type === "button") {
+                bodyText = msg.button.text;
+              } else if (type === "interactive") {
                 bodyText =
                   msg.interactive.button_reply?.title ||
                   msg.interactive.list_reply?.title ||
                   "[Interactive]";
+              }
 
+              // Immediate Store (Fast)
               const chatMsg = await prisma.chatMessage.create({
                 data: {
                   contactId: contact.id,
@@ -2724,70 +2942,51 @@ app.post("/api/webhooks", async (req, res) => {
                   fromMe: false,
                   type,
                   body: bodyText,
+                  mediaUrl,
                   metaMessageId: metaId,
                   timestamp: new Date(),
                 },
               });
 
-              // Auto opt-out / opt-in detection
-              const lowerBody = bodyText.toLowerCase().trim();
-              const stopKeywords = [
-                "stop",
-                "unsubscribe",
-                "quit",
-                "cancel",
-                "opt out",
-                "stop receiving",
-              ];
-              const startKeywords = ["start", "yes", "opt in", "subscribe"];
-
-              let optInUpdates = {};
-              if (stopKeywords.includes(lowerBody)) {
-                optInUpdates = {
-                  optInStatus: "opted_out",
-                  optOutReason: "keyword_reply",
-                  optOutTimestamp: new Date(),
-                };
-                io.emit("contact_opted_out", { contactId: contact.id, phone });
-                await logAction("OPT_OUT_AUTO", "Contact", contact.id, {
-                  reason: "keyword_reply",
-                });
-              } else if (startKeywords.includes(lowerBody)) {
-                optInUpdates = {
-                  optInStatus: "opted_in",
-                  optInMethod: "keyword_reply",
-                  optInTimestamp: new Date(),
-                  optOutTimestamp: null,
-                  optOutReason: null,
-                };
-                io.emit("contact_opted_in", { contactId: contact.id, phone });
-                await logAction("OPT_IN_AUTO", "Contact", contact.id, {
-                  method: "keyword_reply",
-                });
-              }
-
-              // Update contact unread count, activity, and opt-in status
+              // Fast Update (Counters & Activity)
               const updatedContact = await prisma.contact.update({
                 where: { id: contact.id },
                 data: {
                   unreadCount: { increment: 1 },
-                  lastMessageAt: new Date(),
-                  lastReplyAt: new Date(),
+                  lastMessageAt: inboundAt,
+                  lastReplyAt: inboundAt,
                   lastAccountId: account?.id,
-                  ...optInUpdates,
+                  ...getInboundOptInData(contact, inboundAt),
                 },
               });
 
-              // Notify UI via Socket.io
+              // Immediate UI Update via Socket
               io.emit("new_message", {
                 message: chatMsg,
                 contact: updatedContact,
               });
 
-              await logAction("INCOMING_MESSAGE", "Contact", contact.id, {
-                type,
-                metaId,
+              // ENQUEUE FOR AI & COMPLEX LOGIC
+              await incomingMessageQueue.add(`msg-${metaId}`, {
+                payload: {
+                  from: phone,
+                  body: bodyText,
+                  mediaUrl: mediaUrl,
+                  type,
+                  metaId,
+                },
+                contactId: contact.id,
+                accountId: account?.id,
+                correlationId,
               });
+
+              await logAction(
+                "INCOMING_MESSAGE_QUEUED",
+                "Contact",
+                contact.id,
+                { metaId },
+                { correlationId },
+              );
             }
           }
         }
@@ -2801,26 +3000,58 @@ app.post("/api/webhooks", async (req, res) => {
   }
 });
 
+// ─── Media Proxy (To solve Auth header issues with Meta CDN) ─────────────────
+app.get("/api/media/proxy", async (req, res) => {
+  const { url, accountId } = req.query;
+  if (!url) return res.status(400).send("URL required");
+
+  try {
+    const account = await prisma.account.findUnique({
+      where: { id: accountId },
+    });
+    if (!account) return res.status(404).send("Account not found");
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch media from Meta");
+
+    const contentType = response.headers.get("content-type");
+    if (contentType) res.setHeader("Content-Type", contentType);
+
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    logger.error(`Media proxy error: ${error.message}`);
+    res.status(500).send("Error proxying media");
+  }
+});
+
 app.use((req, res) => {
-  res.status(404).json({ 
-    error: "Route not found", 
+  res.status(404).json({
+    error: "Route not found",
     path: req.path,
-    correlationId: req.correlationId 
+    correlationId: req.correlationId,
   });
 });
 
 app.use((err, req, res, next) => {
   const correlationId = req.correlationId || "SYSTEM";
-  logger.error(`🔥 Unhandled Exception: ${err.message}`, { 
-    correlationId, 
-    path: req.path,
-    method: req.method
-  }, err);
+  logger.error(
+    `🔥 Unhandled Exception: ${err.message}`,
+    {
+      correlationId,
+      path: req.path,
+      method: req.method,
+    },
+    err,
+  );
 
   res.status(err.status || 500).json({
     error: "Internal Server Error",
     details: process.env.NODE_ENV === "development" ? err.message : undefined,
-    correlationId
+    correlationId,
   });
 });
 

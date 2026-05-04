@@ -14,9 +14,12 @@ import Zap from 'lucide-react/dist/esm/icons/zap'
 import Clock from 'lucide-react/dist/esm/icons/clock'
 import RefreshCcw from 'lucide-react/dist/esm/icons/refresh-ccw'
 import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left'
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles'
 
-import { Button } from '../components/ui/Button'
+import { Button, IconButton } from '../components/ui/Button'
+import { LeadIntelligenceCard } from '../components/ui/LeadIntelligenceCard'
 import { useAccounts } from '../store/AccountsContext'
+// ... rest of imports
 import { useToast } from '../store/ToastContext'
 import { socket } from '../lib/socket'
 import { InboxSkeleton } from './inbox/InboxSkeleton'
@@ -43,8 +46,8 @@ export default function Inbox() {
   
   const messagesEndRef = useRef(null)
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  const scrollToBottom = useCallback((behavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" })
   }, [])
 
   const fetchInbox = useCallback(async () => {
@@ -96,18 +99,29 @@ export default function Inbox() {
       if (selectedId === updatedContact.id) {
         setChatData(prev => ({
           ...prev,
-          messages: [...prev.messages, message],
+          messages: prev.messages.some(m => m.id === message.id) ? prev.messages : [...prev.messages, message],
           isWindowOpen: true 
         }));
       }
     };
 
+    const handleContactUpdated = (updatedContact) => {
+      if (!updatedContact?.id) return;
+      setConversations(prev => prev.map(c => c.id === updatedContact.id ? { ...c, ...updatedContact } : c));
+    };
+
     socket.on('new_message', handleNewMessage);
-    return () => socket.off('new_message', handleNewMessage);
+    socket.on('contact_updated', handleContactUpdated);
+    return () => {
+      socket.off('new_message', handleNewMessage);
+      socket.off('contact_updated', handleContactUpdated);
+    };
   }, [selectedId]);
 
   useEffect(() => {
-    scrollToBottom()
+    // Instant scroll on first load or when messages change significantly
+    const behavior = chatData.messages.length <= 1 ? "auto" : "smooth";
+    scrollToBottom(behavior)
   }, [chatData.messages, scrollToBottom])
 
   const handleSelectContact = useCallback((id) => {
@@ -141,7 +155,7 @@ export default function Inbox() {
     if (selectedFile) formData.append('file', selectedFile)
 
     try {
-      const res = await fetch(`http://127.0.0.1:3001/api/inbox/${selectedId}/send`, {
+      const res = await fetch(`${config.API_URL}/inbox/${selectedId}/send`, {
         method: 'POST',
         body: formData
       })
@@ -149,7 +163,10 @@ export default function Inbox() {
       const result = await res.json()
       if (!res.ok) throw new Error(result.message || 'Failed to send message')
       
-      setChatData(prev => ({ ...prev, messages: [...prev.messages, result] }))
+      setChatData(prev => ({
+        ...prev,
+        messages: prev.messages.some(m => m.id === result.id) ? prev.messages : [...prev.messages, result]
+      }))
       setInputText('')
       setSelectedFile(null)
       setPreviewUrl(null)
@@ -218,6 +235,7 @@ export default function Inbox() {
           {selectedId ? (
             <>
               <header className="chat-header">
+                {/* ... (keep existing header content) */}
                 <div className="chat-header-info">
                   <button className="inbox-mobile-back" onClick={handleBackToList}>
                     <ChevronLeft size={24} />
@@ -250,7 +268,7 @@ export default function Inbox() {
                         size="xs"
                         onClick={async () => {
                           try {
-                            await fetch(`http://127.0.0.1:3001/api/contacts/${selectedId}`, {
+                            await fetch(`${config.API_URL}/contacts/${selectedId}`, {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ leadStage: stage })
@@ -264,7 +282,11 @@ export default function Inbox() {
                       </Button>
                     ))}
                   </div>
-                  <Button variant="ghost" size="sm" className="btn-icon" aria-label="More options"><MoreVertical size={18} /></Button>
+                  <IconButton 
+                    icon={MoreVertical} 
+                    className="more-options-btn" 
+                    aria-label="More options" 
+                  />
                 </div>
               </header>
 
@@ -341,6 +363,13 @@ export default function Inbox() {
             </div>
           )}
         </main>
+
+        {/* Right Sidebar: Lead Intelligence */}
+        {selectedId && (
+          <aside className="chat-info-sidebar">
+            <LeadIntelligenceCard contact={selectedContact} />
+          </aside>
+        )}
       </div>
     </div>
   )

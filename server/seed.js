@@ -7,12 +7,15 @@ dotenv.config();
 const adapter = new PrismaLibSql({ url: "file:dev.db" });
 const prisma = new PrismaClient({ adapter });
 
-const ACCESS_TOKEN =
-  "EAAeiSgg0ruABReYnvcBoueRRP89QyUJMjOZAPtQfHFFSa5FbCl81g3kauf8CXPJytV0oAq5LxTf9H4Vp4YpTkMpoQZBQZAHXELSZBN93JlVWrZA4Koj2MIXS9NTmQt6MpCAhxjyuslIOYxH0YPChidYuGVPYNwCE23CvxrHu2oXwASKeDscJ4m9yTYrptZBm5ZCeY5ZCi6ujkLZBVd9RyHiA6vBruFMLSFFPxsRyTC7fzYU2PrHgQSsaxZBaZC9gLKZCYw6FUmZBWejmEZBVSMkr2ZBIDwW";
-const WABA_ID = "1446327893644967";
-const PHONE_NUMBER_ID = "1018091321395233";
+const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
+const WABA_ID = process.env.WABA_ID;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
 async function main() {
+  if (!ACCESS_TOKEN || !WABA_ID || !PHONE_NUMBER_ID) {
+    throw new Error("META_ACCESS_TOKEN, WABA_ID, and PHONE_NUMBER_ID are required to seed an account");
+  }
+
   // Create Account
   const account = await prisma.account.upsert({
     where: { phoneNumberId: PHONE_NUMBER_ID },

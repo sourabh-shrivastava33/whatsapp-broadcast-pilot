@@ -30,11 +30,17 @@ class Logger {
     this._write('INFO', message, context);
   }
 
+  debug(message, context) {
+    if (process.env.NODE_ENV === 'development') {
+      this._write('DEBUG', message, context);
+    }
+  }
+
   warn(message, context) {
     this._write('WARN', message, context);
   }
 
-  error(message, context, error) {
+  error(message, context = {}, error) {
     const errorDetails = error ? ` | Stack: ${error.stack}` : '';
     const logLine = this._format('ERROR', message, context) + errorDetails;
     console.error(logLine);

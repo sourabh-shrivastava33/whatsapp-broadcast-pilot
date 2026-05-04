@@ -33,8 +33,21 @@ model Contact {
   tags            Json?
   notes           String?
   brokerageNotes  String?
-  leadStage       String        @default("NEW")
+  leadStage       String        @default("NEW") // NEW, HOT, WARM, COLD, VISIT_BOOKED, CLOSED
   status          String        @default("active")
+  
+  // Lead Intelligence
+  intentScore     Int           @default(0)
+  aiSummary       String?
+  nextAction      String?
+  qualificationData Json?       // { budget, location, propertyType, timeline, purpose, loanReadiness }
+  aiSessionState    Json?       // Stores the full agent state (handoffs, tool history, etc.)
+  
+  // CRM Sync
+  lastSyncAt      DateTime?
+  crmId           String?       @unique
+  crmStatus       String?       @default("unsynced")
+
   lastBroadcastAt DateTime?
   lastReplyAt     DateTime?
   unreadCount     Int           @default(0)
