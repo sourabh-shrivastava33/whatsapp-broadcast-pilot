@@ -15,7 +15,7 @@ export const AuthProvider = ({ children }) => {
 
   const checkUser = async () => {
     try {
-      const response = await fetch(`${config.API_URL}/auth/me`);
+      const response = await fetch(`${config.API_URL}/auth/me`, { credentials: 'include' });
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
@@ -33,7 +33,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchWorkspaces = async () => {
     try {
-      const response = await fetch(`${config.API_URL}/auth/workspaces`);
+      const response = await fetch(`${config.API_URL}/auth/workspaces`, { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         setWorkspaces(data);
@@ -62,6 +62,7 @@ export const AuthProvider = ({ children }) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
+      credentials: 'include',
     });
 
     if (response.ok) {
@@ -80,6 +81,7 @@ export const AuthProvider = ({ children }) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name }),
+      credentials: 'include',
     });
 
     if (response.ok) {
@@ -94,7 +96,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await fetch(`${config.API_URL}/auth/logout`, { method: 'POST' });
+    await fetch(`${config.API_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
     setWorkspaces([]);
     setActiveWorkspace(null);
@@ -108,7 +110,11 @@ export const AuthProvider = ({ children }) => {
     if (activeWorkspace) {
       headers['X-Workspace-Id'] = activeWorkspace.id;
     }
-    return fetch(url, { ...options, headers });
+    return fetch(url, { 
+      ...options, 
+      headers,
+      credentials: 'include' 
+    });
   };
 
   return (
