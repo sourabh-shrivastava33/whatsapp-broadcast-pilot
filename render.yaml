@@ -3,7 +3,7 @@ services:
   - type: static
     name: whatsapp-frontend
     repo: https://github.com/YOUR_USERNAME/YOUR_REPO # Replace with your repo URL
-    branch: main
+    branch: master
     rootDir: . # Run from root to access vite.config.js
     buildCommand: npm ci && npm run build
     publishPath: dist
@@ -15,11 +15,11 @@ services:
   - type: web
     name: whatsapp-backend
     repo: https://github.com/YOUR_USERNAME/YOUR_REPO # Replace with your repo URL
-    branch: main
+    branch: master
     rootDir: server # Focus on the server directory
     plan: free # Explicitly set free plan
-    buildCommand: npm ci && npx prisma generate
-    startCommand: npx prisma migrate deploy && node index.js
+    buildCommand: npm ci
+    startCommand: npx prisma generate && npx prisma migrate deploy --schema=./prisma/schema.prisma && node index.js
     envVars:
       - key: DATABASE_URL
         sync: false # Set in Render Dashboard
