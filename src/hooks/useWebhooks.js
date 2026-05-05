@@ -83,7 +83,10 @@ export function useWebhooks() {
       const res = await fetch(`${API_BASE}/webhook-settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings || settings)
+        body: JSON.stringify({ 
+          ...(newSettings || settings), 
+          url: 'https://whatsapp-broadcast-pilot.onrender.com/api/webhooks' 
+        })
       });
       const data = await res.json();
       setSettings(data);
@@ -105,7 +108,10 @@ export function useWebhooks() {
       const res = await fetch(`${API_BASE}/webhook-settings/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: settings.url, verifyToken: settings.verifyToken })
+        body: JSON.stringify({ 
+          url: 'https://whatsapp-broadcast-pilot.onrender.com/api/webhooks', 
+          verifyToken: settings.verifyToken 
+        })
       });
       const data = await res.json();
       setTestResult(data);
