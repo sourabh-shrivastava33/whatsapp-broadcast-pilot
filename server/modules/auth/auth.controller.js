@@ -149,3 +149,29 @@ export const getWorkspaces = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+export const createWorkspace = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Workspace name is required' });
+    }
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name,
+        memberships: {
+          create: {
+            userId: req.user.id,
+            role: 'OWNER',
+          },
+        },
+      },
+    });
+
+    res.status(201).json(workspace);
+  } catch (error) {
+    console.error('Create workspace error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
