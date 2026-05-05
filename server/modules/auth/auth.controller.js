@@ -5,6 +5,36 @@ import jwt from 'jsonwebtoken';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-this';
 const COOKIE_EXPIRE = 24 * 60 * 60 * 1000; // 24 hours
 
+const cookieOptions = {
+  httpOnly: true,
+  secure: true,
+  maxAge: COOKIE_EXPIRE,
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+};
+
+// Helper to ensure user has a default workspace
+async function ensureDefaultWorkspace(userId, userName) {
+  const existingMembership = await prisma.membership.findFirst({
+    where: { userId }
+  });
+
+  if (!existingMembership) {
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: `${userName || 'My'}'s Workspace`,
+        memberships: {
+          create: {
+            userId,
+            role: 'OWNER'
+          }
+        }
+      }
+    });
+    return workspace;
+  }
+  return null;
+}
+
 export const register = async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -27,14 +57,11 @@ export const register = async (req, res) => {
       },
     });
 
-    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '24h' });
+    // Create default workspace for new user
+    await ensureDefaultWorkspace(user.id, user.name);
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: true,
-      maxAge: COOKIE_EXPIRE,
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '24h' });
+    res.cookie('token', token, cookieOptions);
 
     res.status(201).json({
       user: {
@@ -67,14 +94,11 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '24h' });
+    // Auto-migrate legacy user to a default workspace if they have none
+    await ensureDefaultWorkspace(user.id, user.name);
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: COOKIE_EXPIRE,
-      sameSite: 'lax',
-    });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '24h' });
+    res.cookie('token', token, cookieOptions);
 
     res.json({
       user: {
@@ -90,7 +114,7 @@ export const login = async (req, res) => {
 };
 
 export const logout = (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie('token', cookieOptions);
   res.json({ message: 'Logged out successfully' });
 };
 
@@ -113,6 +137,9 @@ export const getMe = async (req, res) => {
 
 export const getWorkspaces = async (req, res) => {
   try {
+    // Ensure default workspace exists even during fetch
+    await ensureDefaultWorkspace(req.user.id, null);
+
     const memberships = await prisma.membership.findMany({
       where: { userId: req.user.id },
       include: { workspace: true },
