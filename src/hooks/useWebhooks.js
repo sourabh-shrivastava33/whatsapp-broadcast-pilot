@@ -2,13 +2,15 @@ import config from '../config.js';
 import { useState, useEffect, useCallback } from 'react';
 import { socket } from '../lib/socket';
 import { useToast } from '../store/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const API_BASE = config.API_URL;
 
 export function useWebhooks() {
   const { toast } = useToast();
+  const { authFetch } = useAuth();
   const [settings, setSettings] = useState({
-    url: 'https://whatsapp-broadcast-pilot.onrender.com/api/webhooks',
+    url: `${config.API_BASE_URL}/api/webhooks`,
     verifyToken: 'whatsapp_broadcast_crm_token',
     subscriptions: 'messages,statuses',
     isActive: true,
@@ -27,10 +29,10 @@ export function useWebhooks() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/webhook-settings`);
+      const res = await authFetch(`${API_BASE}/webhook-settings`);
       const data = await res.json();
       setSettings(data && typeof data === 'object' ? data : {
-        url: 'https://whatsapp-broadcast-pilot.onrender.com/api/webhooks',
+        url: `${config.API_BASE_URL}/api/webhooks`,
         verifyToken: 'whatsapp_broadcast_crm_token',
         subscriptions: 'messages,statuses',
         isActive: true,
@@ -44,17 +46,17 @@ export function useWebhooks() {
       console.error('Failed to fetch settings', err);
       setLoading(false);
     }
-  }, []);
+  }, [authFetch]);
 
   const fetchSystemHealth = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/system/health`);
+      const res = await authFetch(`${API_BASE}/system/health`);
       const data = await res.json();
       setSystemHealth(data);
     } catch (err) {
       console.error('Failed to fetch system health', err);
     }
-  }, []);
+  }, [authFetch]);
 
   useEffect(() => {
     fetchSettings();
@@ -80,12 +82,12 @@ export function useWebhooks() {
   const saveSettings = async (newSettings) => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/webhook-settings`, {
+      const res = await authFetch(`${API_BASE}/webhook-settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           ...(newSettings || settings), 
-          url: 'https://whatsapp-broadcast-pilot.onrender.com/api/webhooks' 
+          url: `${config.API_BASE_URL}/api/webhooks` 
         })
       });
       const data = await res.json();
@@ -105,11 +107,11 @@ export function useWebhooks() {
     setTestResult(null);
     toast({ type: 'loading', message: 'Testing connection...' });
     try {
-      const res = await fetch(`${API_BASE}/webhook-settings/test`, {
+      const res = await authFetch(`${API_BASE}/webhook-settings/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          url: 'https://whatsapp-broadcast-pilot.onrender.com/api/webhooks', 
+          url: `${config.API_BASE_URL}/api/webhooks`, 
           verifyToken: settings.verifyToken 
         })
       });
@@ -138,12 +140,11 @@ export function useWebhooks() {
     setSaving(true);
     setSyncProgress({ status: 'processing', message: 'Starting synchronization...' });
     try {
-      const res = await fetch(`${API_BASE}/webhook-settings/meta-sync`, { method: 'POST' });
+      const res = await authFetch(`${API_BASE}/webhook-settings/meta-sync`, { method: 'POST' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Sync failed');
       return data;
     } catch (err) {
-      // Error handled by socket listener too
       setSaving(false);
       throw err;
     }
