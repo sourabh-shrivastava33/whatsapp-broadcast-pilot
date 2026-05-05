@@ -191,6 +191,37 @@ const upload = multer({
 });
 
 // ============================================
+// Core & Health Check
+// ============================================
+app.get("/", (req, res) => {
+  res.json({ 
+    status: "online", 
+    service: "WhatsApp Broadcast CRM API",
+    version: "1.0.0",
+    timestamp: new Date()
+  });
+});
+
+app.get("/api/health", async (req, res) => {
+  try {
+    // Basic DB check to ensure connectivity
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ 
+      status: "healthy", 
+      database: "connected",
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage()
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: "unhealthy", 
+      database: "disconnected", 
+      error: error.message 
+    });
+  }
+});
+
+// ============================================
 // Media API
 // ============================================
 
