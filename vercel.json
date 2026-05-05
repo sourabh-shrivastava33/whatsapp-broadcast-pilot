@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://whatsapp-broadcast-pilot.onrender.com/api/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
