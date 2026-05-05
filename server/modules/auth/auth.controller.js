@@ -31,9 +31,9 @@ export const register = async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       maxAge: COOKIE_EXPIRE,
-      sameSite: 'lax',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     });
 
     res.status(201).json({

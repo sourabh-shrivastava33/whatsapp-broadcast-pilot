@@ -61,6 +61,7 @@ app.use(
 const corsOptions = {
   origin: IS_PRODUCTION ? ALLOWED_ORIGIN : "*",
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  credentials: true,
 };
 app.use(cors(corsOptions));
 app.use(cookieParser());
