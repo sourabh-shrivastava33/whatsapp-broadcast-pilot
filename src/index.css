@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
 /* ============================================
    WhatsApp Broadcast CRM — Design System
    Premium dark theme with WhatsApp-inspired accents
@@ -65,8 +67,9 @@
   --sidebar-width-collapsed: 80px;
   --sidebar-width-expanded: 260px;
   --command-strip-height: 56px;
-  --page-max-width: 1400px;
   --mobile-header-height: 64px;
+  --page-padding-x: 40px;
+  --page-padding-y: 32px;
 
   /* Glassmorphism & Overlays */
   --bg-command-strip: rgba(11, 14, 20, 0.75);
@@ -102,6 +105,8 @@
     --space-lg: 20px;
     --space-xl: 32px;
     --space-2xl: 48px;
+    --page-padding-x: 16px;
+    --page-padding-y: 20px;
     --command-strip-height: 54px;
   }
 }
@@ -147,8 +152,6 @@
   color: var(--accent);
 }
 
-/* Force modern typography */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* ---------- Glassmorphism & Effects ---------- */
 .glass-premium {
@@ -251,6 +254,17 @@ body {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.page {
+  width: 100%;
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: var(--page-padding-y) var(--page-padding-x);
+  animation: fadeIn var(--transition-normal) ease;
+  flex: 1;
 }
 
 a {

@@ -39,7 +39,7 @@ export function TemplatesProvider({ children }) {
   useEffect(() => {
     fetch(API_URL)
       .then((res) => res.json())
-      .then((data) => dispatch({ type: "SET_TEMPLATES", payload: data }))
+      .then((data) => dispatch({ type: "SET_TEMPLATES", payload: Array.isArray(data) ? data : [] }))
       .catch((err) => {
         console.error("Failed to fetch templates", err);
         dispatch({ type: "SET_TEMPLATES", payload: [] });
@@ -131,7 +131,7 @@ export function useTemplates() {
         // Refetch all templates as multiple account-specific ones were created
         const allRes = await fetch(API_URL);
         const allData = await allRes.json();
-        dispatch({ type: "SET_TEMPLATES", payload: allData });
+        dispatch({ type: "SET_TEMPLATES", payload: Array.isArray(allData) ? allData : [] });
 
         return data;
       } catch (err) {
@@ -155,7 +155,7 @@ export function useTemplates() {
         // Refetch all templates to update the UI
         const allRes = await fetch(API_URL);
         const allData = await allRes.json();
-        dispatch({ type: "SET_TEMPLATES", payload: allData });
+        dispatch({ type: "SET_TEMPLATES", payload: Array.isArray(allData) ? allData : [] });
 
         return data;
       } catch (err) {

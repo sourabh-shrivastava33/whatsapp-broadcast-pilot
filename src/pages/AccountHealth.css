@@ -1,8 +1,4 @@
 .account-health-page {
-  max-width: var(--page-max-width);
-  margin: 0 auto;
-  padding: var(--space-2xl);
-  padding-bottom: var(--space-3xl);
   display: flex;
   flex-direction: column;
   gap: var(--space-2xl);

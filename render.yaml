@@ -1,35 +1,43 @@
 services:
+  # 1. Frontend: Static Site (Free Tier)
   - type: static
     name: whatsapp-frontend
-    repo: https://github.com/<your-org>/<repo>
+    repo: https://github.com/YOUR_USERNAME/YOUR_REPO # Replace with your repo URL
     branch: main
+    rootDir: . # Run from root to access vite.config.js
     buildCommand: npm ci && npm run build
     publishPath: dist
-    env:
-      VITE_API_URL: https://<backend>.onrender.com
+    envVars:
+      - key: VITE_API_URL
+        value: https://whatsapp-backend-SERVICE_NAME.onrender.com # Update after backend deployment
 
+  # 2. Backend + Worker: Web Service (Free Tier)
   - type: web
     name: whatsapp-backend
-    repo: https://github.com/<your-org>/<repo>
+    repo: https://github.com/YOUR_USERNAME/YOUR_REPO # Replace with your repo URL
     branch: main
-    rootDir: server
-    buildCommand: npm ci
-    startCommand: npx prisma migrate deploy && npm start
-    env:
-      DATABASE_URL: $DATABASE_URL
-      REDIS_URL: $REDIS_URL
-      SUPABASE_URL: $SUPABASE_URL
-      SUPABASE_SECRET_KEY: $SUPABASE_SECRET_KEY
-      WEBHOOK_VERIFY_TOKEN: $WEBHOOK_VERIFY_TOKEN
-      NODE_ENV: production
-
-  - type: worker
-    name: whatsapp-worker
-    repo: https://github.com/<your-org>/<repo>
-    branch: main
-    rootDir: server
-    buildCommand: npm ci
-    startCommand: node worker.js
-    env:
-      DATABASE_URL: $DATABASE_URL
-      REDIS_URL: $REDIS_URL
+    rootDir: server # Focus on the server directory
+    plan: free # Explicitly set free plan
+    buildCommand: npm ci && npx prisma generate
+    startCommand: npx prisma migrate deploy && node index.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false # Set in Render Dashboard
+      - key: REDIS_URL
+        sync: false # Set in Render Dashboard (Upstash URL)
+      - key: SUPABASE_URL
+        sync: false # Set in Render Dashboard
+      - key: SUPABASE_SECRET_KEY
+        sync: false # Set in Render Dashboard (Service Role Key)
+      - key: ALLOWED_ORIGIN
+        sync: false # Set in Render Dashboard (Frontend URL)
+      - key: BACKEND_URL
+        sync: false # Set in Render Dashboard (Backend URL)
+      - key: NODE_ENV
+        value: production
+      - key: WEBHOOK_VERIFY_TOKEN
+        sync: false # Set in Render Dashboard
+      - key: META_APP_SECRET
+        sync: false # Set in Render Dashboard
+      - key: PORT
+        value: 10000

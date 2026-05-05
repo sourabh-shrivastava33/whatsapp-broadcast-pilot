@@ -61,12 +61,9 @@ export function AppLayout({ children }) {
         className="app-content" 
         style={{ 
           marginLeft: isMobile ? '0' : sidebarWidth,
-          paddingTop: isMobile 
-            ? 'calc(var(--command-strip-height) + var(--mobile-header-height) + 16px)' 
-            : `calc(var(--command-strip-height) + 20px)`,
-          paddingBottom: isMobile ? '80px' : '20px',
-          paddingLeft: isMobile ? '16px' : '40px',
-          paddingRight: isMobile ? '16px' : '40px',
+          '--top-offset': isMobile 
+            ? 'calc(var(--command-strip-height) + var(--mobile-header-height))' 
+            : 'var(--command-strip-height)'
         }}
       >
         <div className="page-container">

@@ -12,7 +12,7 @@ export function StatusHero({ systemHealth, settings, onTest, testing }) {
         <div className="pulse-indicator">
           <div className={`pulse-dot ${isReady ? 'active' : isFailing ? 'error' : 'unknown'}`} />
           <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 'bold' }}>
-            System Readiness: {isReady ? 'READY' : systemHealth.status.replace('_', ' ')}
+            System Readiness: {isReady ? 'READY' : (systemHealth.status || 'unknown').replace('_', ' ')}
           </h2>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>

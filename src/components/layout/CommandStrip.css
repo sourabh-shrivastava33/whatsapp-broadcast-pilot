@@ -36,35 +36,38 @@
 .command-strip-step {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-size: var(--font-size-xs);
+  gap: 10px;
+  padding: 6px 16px;
+  border-radius: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
   transition: all var(--transition-normal);
   white-space: nowrap;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
+  border: 1px solid transparent;
 }
 
 .command-strip-step.active {
   color: var(--accent);
   background: var(--accent-dim);
+  border-color: rgba(16, 185, 129, 0.2);
+  box-shadow: inset 0 0 10px rgba(16, 185, 129, 0.05);
 }
 
 .command-strip-step.completed {
-  color: var(--text-primary);
+  color: var(--accent);
 }
 
 .command-strip-step-number {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   background: var(--bg-input);
   color: var(--text-muted);
@@ -77,18 +80,21 @@
   background: var(--accent);
   color: #ffffff;
   border-color: var(--accent);
-  box-shadow: 0 0 15px var(--accent-dim);
+  box-shadow: 0 4px 12px var(--accent-dim);
+  transform: scale(1.05);
 }
 
 .command-strip-step.completed .command-strip-step-number {
   background: var(--accent-dim);
   color: var(--accent);
+  border-color: rgba(16, 185, 129, 0.2);
 }
 
 .command-strip-arrow {
   color: var(--text-muted);
-  opacity: 0.3;
+  opacity: 0.2;
   flex-shrink: 0;
+  margin: 0 2px;
 }
 
 /* Glow line at bottom */
@@ -98,48 +104,57 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 1px;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    var(--accent) 50%,
+    rgba(16, 185, 129, 0.4) 50%,
     transparent 100%
   );
-  filter: blur(1px);
-  opacity: 0.6;
+  opacity: 0.8;
 }
 
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .command-strip-step {
-    padding: 6px 10px;
+    padding: 6px 12px;
+    gap: 8px;
   }
 }
 
 @media (max-width: 768px) {
   .command-strip {
-    top: var(--mobile-header-height); /* Below header */
-    height: var(--command-strip-height);
+    top: var(--mobile-header-height);
+    height: 48px;
+    background: var(--bg-surface);
   }
 
   .command-strip-inner {
     gap: 4px;
-    justify-content: flex-start;
+    justify-content: center;
+    padding: 0 var(--space-sm);
   }
   
   .command-strip-step {
-    font-size: 0; /* Hide text, keep number */
+    font-size: 0;
     padding: 4px;
+    border-radius: 6px;
   }
   
   .command-strip-step.active {
-    font-size: 9px; /* Show small text for active step */
-    gap: 4px;
-    background: transparent;
+    font-size: 10px;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--accent-dim);
   }
   
   .command-strip-step-number {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+  }
+  
+  .command-strip-arrow {
+    margin: 0;
   }
 }

@@ -29,7 +29,16 @@ export function useWebhooks() {
     try {
       const res = await fetch(`${API_BASE}/webhook-settings`);
       const data = await res.json();
-      setSettings(data);
+      setSettings(data && typeof data === 'object' ? data : {
+        url: '',
+        verifyToken: '',
+        subscriptions: 'messages,statuses',
+        isActive: true,
+        healthStatus: 'unknown',
+        metaStatus: 'unknown',
+        metaError: null,
+        lastSyncAt: null
+      });
       setLoading(false);
     } catch (err) {
       console.error('Failed to fetch settings', err);

@@ -26,8 +26,8 @@ export function MediaProvider({ children }) {
       const response = await fetch(`${config.API_URL}/media?${query}`);
       if (!response.ok) throw new Error('Failed to fetch media');
       const result = await response.json();
-      setMedia(result.data);
-      setPagination(result.pagination);
+      setMedia(Array.isArray(result.data) ? result.data : []);
+      setPagination(result.pagination || { total: 0, page: 1, limit: 20, pages: 1 });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -40,7 +40,7 @@ export function MediaProvider({ children }) {
       const response = await fetch(`${config.API_URL}/folders`);
       if (!response.ok) throw new Error('Failed to fetch folders');
       const data = await response.json();
-      setFolders(data);
+      setFolders(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Folder fetch error:', err);
     }

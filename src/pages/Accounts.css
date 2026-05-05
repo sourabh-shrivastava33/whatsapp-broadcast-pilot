@@ -3,8 +3,43 @@
    ============================================ */
 
 .accounts-page {
-  max-width: var(--page-max-width);
-  margin: 0 auto;
+  /* Layout handled by global .page class */
+}
+
+.accounts-page .page-header {
+  position: relative;
+  padding: var(--space-2xl) 0;
+  margin-bottom: var(--space-3xl);
+  overflow: visible;
+}
+
+/* Decorative background glow for header */
+.accounts-page .page-header::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -5%;
+  width: 300px;
+  height: 200px;
+  background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.accounts-page .page-title {
+  font-size: var(--font-size-3xl);
+  letter-spacing: -0.03em;
+}
+
+.accounts-page .page-subtitle {
+  font-size: var(--font-size-md);
+  opacity: 0.9;
+}
+
+.accounts-page .page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
 }
 
 /* ── WABA Groups ───────────────────────────── */

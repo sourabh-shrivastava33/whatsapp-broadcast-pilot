@@ -115,7 +115,7 @@ export default function BroadcastDetail() {
 
   const { stats, messages, template, account } = data
   
-  const filteredMessages = messages.filter(m => 
+  const filteredMessages = (messages || []).filter(m => 
     (m.contact?.name || '').toLowerCase().includes(search.toLowerCase()) ||
     (m.contact?.phone || '').includes(search)
   )

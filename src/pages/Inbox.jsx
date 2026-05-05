@@ -66,7 +66,7 @@ export default function Inbox() {
     try {
       const res = await fetch(`${config.API_URL}/inbox/${contactId}`)
       const data = await res.json()
-      setChatData(data)
+      setChatData(data && typeof data === 'object' ? data : { messages: [], isWindowOpen: false })
       setConversations(prev => prev.map(c => c.id === contactId ? { ...c, unreadCount: 0 } : c))
     } catch (err) {
       console.error('Failed to fetch messages', err)

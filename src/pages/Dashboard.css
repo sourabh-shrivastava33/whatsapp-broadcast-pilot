@@ -3,7 +3,7 @@
    ============================================ */
 
 .dashboard-greeting {
-  margin-bottom: var(--space-2xl);
+  margin-bottom: var(--space-xl);
 }
 
 .dashboard-greeting h1 {

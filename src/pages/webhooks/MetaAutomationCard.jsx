@@ -20,7 +20,7 @@ export function MetaAutomationCard({ settings, onSync, onSave, saving, syncProgr
           </div>
         </div>
         <div className={`meta-status-badge status-${settings.metaStatus}`}>
-          {settings.metaStatus.replace('_', ' ')}
+          {(settings.metaStatus || 'unknown').replace('_', ' ')}
         </div>
       </div>
 

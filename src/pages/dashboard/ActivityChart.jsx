@@ -1,5 +1,6 @@
 import config from '../../config.js';
 import React from 'react'
+import Radio from 'lucide-react/dist/esm/icons/radio'
 import {
   AreaChart,
   Area,
@@ -39,7 +40,7 @@ const ActivityChart = () => {
     fetch(config.API_URL + "/stats/broadcast-activity")
       .then(res => res.json())
       .then(data => {
-        setChartData(data)
+        setChartData(Array.isArray(data) ? data : [])
         setLoading(false)
       })
       .catch(err => {
@@ -50,44 +51,53 @@ const ActivityChart = () => {
 
   if (loading) return <div className="skeleton-pulse" style={{ height: 300, width: '100%', borderRadius: 16 }} />
 
+  const hasData = chartData.length > 0 && chartData.some(d => d.sent > 0);
+
   return (
-    <div className="activity-chart-container">
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart
-          data={chartData}
-          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-        >
-          <defs>
-            <linearGradient id="colorSent" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-          <XAxis 
-            dataKey="name" 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-            dy={10}
-          />
-          <YAxis 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <Area
-            type="monotone"
-            dataKey="sent"
-            stroke="var(--accent)"
-            strokeWidth={3}
-            fillOpacity={1}
-            fill="url(#colorSent)"
-            animationDuration={1500}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div className="activity-chart-container" style={{ minHeight: 300, display: 'flex', flexDirection: 'column' }}>
+      {!hasData ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: 12 }}>
+          <Radio size={32} style={{ opacity: 0.2 }} />
+          <p style={{ fontSize: 14 }}>No broadcast activity in the last 7 days</p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={300}>
+          <AreaChart
+            data={chartData}
+            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+          >
+            <defs>
+              <linearGradient id="colorSent" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+            <XAxis 
+              dataKey="name" 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
+              dy={10}
+            />
+            <YAxis 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Area
+              type="monotone"
+              dataKey="sent"
+              stroke="var(--accent)"
+              strokeWidth={3}
+              fillOpacity={1}
+              fill="url(#colorSent)"
+              animationDuration={1500}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
     </div>
   )
 }
