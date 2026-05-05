@@ -4,6 +4,8 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [activeWorkspace, setActiveWorkspace] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,6 +18,7 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
+        await fetchWorkspaces();
       } else {
         setUser(null);
       }
@@ -24,6 +27,33 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchWorkspaces = async () => {
+    try {
+      const response = await fetch('/api/auth/workspaces');
+      if (response.ok) {
+        const data = await response.json();
+        setWorkspaces(data);
+        if (data.length > 0 && !activeWorkspace) {
+          // Initialize active workspace from localStorage or default to first
+          const savedId = localStorage.getItem('activeWorkspaceId');
+          const saved = data.find(w => w.id === savedId);
+          setActiveWorkspace(saved || data[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch workspaces:', error);
+    }
+  };
+
+  const selectWorkspace = (workspace) => {
+    setActiveWorkspace(workspace);
+    if (workspace) {
+      localStorage.setItem('activeWorkspaceId', workspace.id);
+    } else {
+      localStorage.removeItem('activeWorkspaceId');
     }
   };
 
@@ -37,6 +67,7 @@ export const AuthProvider = ({ children }) => {
     if (response.ok) {
       const { user: userData } = await response.json();
       setUser(userData);
+      await fetchWorkspaces();
       return { success: true };
     } else {
       const error = await response.json();
@@ -54,6 +85,9 @@ export const AuthProvider = ({ children }) => {
     if (response.ok) {
       const { user: userData } = await response.json();
       setUser(userData);
+      // For a new user, we might need to create a default workspace in the backend
+      // But for Phase 2 we assume they'll be added to one or we'll add a creator flow later
+      await fetchWorkspaces();
       return { success: true };
     } else {
       const error = await response.json();
@@ -64,10 +98,34 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
+    setWorkspaces([]);
+    setActiveWorkspace(null);
+    localStorage.removeItem('activeWorkspaceId');
+  };
+
+  // Wrapper for fetch that includes workspace ID
+  const authFetch = async (url, options = {}) => {
+    const headers = {
+      ...options.headers,
+    };
+    if (activeWorkspace) {
+      headers['X-Workspace-Id'] = activeWorkspace.id;
+    }
+    return fetch(url, { ...options, headers });
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      workspaces, 
+      activeWorkspace, 
+      loading, 
+      login, 
+      register, 
+      logout, 
+      selectWorkspace,
+      authFetch 
+    }}>
       {children}
     </AuthContext.Provider>
   );

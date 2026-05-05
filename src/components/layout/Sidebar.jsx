@@ -17,7 +17,9 @@ import {
   Activity,
   X,
   ShieldCheck,
-  LogOut
+  LogOut,
+  Building2,
+  ChevronDown
 } from 'lucide-react'
 import { useTheme } from '../../store/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -54,8 +56,9 @@ const navGroups = [
 export function Sidebar({ onExpand, onLock, isMobile, isOpen, onClose }) {
   const [expanded, setExpanded] = useState(false)
   const [locked, setLocked] = useState(false)
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false)
   const { theme, toggleTheme } = useTheme()
-  const { logout } = useAuth()
+  const { logout, user, workspaces, activeWorkspace, selectWorkspace } = useAuth()
 
   const isActuallyExpanded = isMobile ? isOpen : (expanded || locked);
 
@@ -74,6 +77,8 @@ export function Sidebar({ onExpand, onLock, isMobile, isOpen, onClose }) {
   return (
     <aside
       className={`sidebar ${isActuallyExpanded ? 'expanded' : ''} ${locked ? 'locked' : ''} ${isMobile ? 'mobile' : ''} ${isOpen ? 'is-open' : ''}`}
+      onMouseEnter={() => handleExpand(true)}
+      onMouseLeave={() => handleExpand(false)}
     >
       {/* Brand */}
       <div className="sidebar-brand">
@@ -88,6 +93,49 @@ export function Sidebar({ onExpand, onLock, isMobile, isOpen, onClose }) {
           <button className="sidebar-close-btn" onClick={onClose}>
             <X size={20} />
           </button>
+        )}
+      </div>
+
+      {/* Workspace Switcher */}
+      <div className="sidebar-workspace-section">
+        <button 
+          className="workspace-toggle"
+          onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)}
+        >
+          <div className="workspace-icon">
+            <Building2 size={18} />
+          </div>
+          {isActuallyExpanded && (
+            <>
+              <div className="workspace-info">
+                <span className="workspace-name">{activeWorkspace?.name || 'Loading...'}</span>
+                <span className="workspace-role">Workspace</span>
+              </div>
+              <ChevronDown size={14} className={`workspace-chevron ${showWorkspaceMenu ? 'rotate' : ''}`} />
+            </>
+          )}
+        </button>
+
+        {showWorkspaceMenu && isActuallyExpanded && (
+          <div className="workspace-menu">
+            <div className="workspace-menu-title">Switch Workspace</div>
+            {workspaces.map(ws => (
+              <button 
+                key={ws.id}
+                className={`workspace-menu-item ${activeWorkspace?.id === ws.id ? 'active' : ''}`}
+                onClick={() => {
+                  selectWorkspace(ws);
+                  setShowWorkspaceMenu(false);
+                }}
+              >
+                {ws.name}
+              </button>
+            ))}
+            <div className="workspace-menu-divider" />
+            <button className="workspace-menu-item create">
+              + Create Workspace
+            </button>
+          </div>
         )}
       </div>
 
@@ -159,4 +207,3 @@ export function Sidebar({ onExpand, onLock, isMobile, isOpen, onClose }) {
     </aside>
   )
 }
-

@@ -2,7 +2,8 @@ import config from '../config.js';
 /**
  * TemplatesContext — manages WhatsApp message templates.
  */
-import React, { createContext, useContext, useReducer, useEffect } from "react";
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from "react";
+import { useAuth } from '../contexts/AuthContext';
 
 const TemplatesContext = createContext(null);
 const API_URL = config.API_URL + "/templates";
@@ -11,6 +12,8 @@ const INITIAL_STATE = { templates: [], loading: true };
 
 function reducer(state, action) {
   switch (action.type) {
+    case "SET_LOADING":
+      return { ...state, loading: true };
     case "SET_TEMPLATES":
       return { ...state, templates: action.payload, loading: false };
     case "ADD_TEMPLATE":
@@ -35,36 +38,29 @@ function reducer(state, action) {
 
 export function TemplatesProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const { authFetch, activeWorkspace } = useAuth();
+
+  const fetchTemplates = useCallback(async () => {
+    if (!activeWorkspace) return;
+    dispatch({ type: "SET_LOADING" });
+    try {
+      const res = await authFetch(API_URL);
+      const data = await res.json();
+      dispatch({ type: "SET_TEMPLATES", payload: Array.isArray(data) ? data : [] });
+    } catch (err) {
+      console.error("Failed to fetch templates", err);
+      dispatch({ type: "SET_TEMPLATES", payload: [] });
+    }
+  }, [authFetch, activeWorkspace]);
 
   useEffect(() => {
-    fetch(API_URL)
-      .then((res) => res.json())
-      .then((data) => dispatch({ type: "SET_TEMPLATES", payload: Array.isArray(data) ? data : [] }))
-      .catch((err) => {
-        console.error("Failed to fetch templates", err);
-        dispatch({ type: "SET_TEMPLATES", payload: [] });
-      });
-  }, []);
+    fetchTemplates();
+  }, [fetchTemplates]);
 
-  return (
-    <TemplatesContext.Provider value={{ state, dispatch }}>
-      {children}
-    </TemplatesContext.Provider>
-  );
-}
-
-export function useTemplates() {
-  const ctx = useContext(TemplatesContext);
-  if (!ctx) throw new Error("useTemplates must be inside TemplatesProvider");
-  const { state, dispatch } = ctx;
-
-  return {
-    templates: state.templates,
-    loading: state.loading,
-
+  const actions = {
     addTemplate: async (payload) => {
       try {
-        const res = await fetch(API_URL, {
+        const res = await authFetch(API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -80,7 +76,7 @@ export function useTemplates() {
 
     updateTemplate: async (payload) => {
       try {
-        const res = await fetch(`${API_URL}/${payload.id}`, {
+        const res = await authFetch(`${API_URL}/${payload.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -94,7 +90,7 @@ export function useTemplates() {
 
     deleteTemplate: async (id) => {
       try {
-        await fetch(`${API_URL}/${id}`, { method: "DELETE" });
+        await authFetch(`${API_URL}/${id}`, { method: "DELETE" });
         dispatch({ type: "DELETE_TEMPLATE", payload: { id } });
       } catch (err) {
         console.error(err);
@@ -103,7 +99,7 @@ export function useTemplates() {
 
     setTemplateStatus: async (id, status) => {
       try {
-        const res = await fetch(`${API_URL}/${id}`, {
+        const res = await authFetch(`${API_URL}/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status }),
@@ -117,7 +113,7 @@ export function useTemplates() {
 
     submitTemplateForApproval: async (id) => {
       try {
-        const res = await fetch(`${API_URL}/${id}/submit`, {
+        const res = await authFetch(`${API_URL}/${id}/submit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
@@ -128,11 +124,7 @@ export function useTemplates() {
           throw new Error(data.error + detailMsg);
         }
 
-        // Refetch all templates as multiple account-specific ones were created
-        const allRes = await fetch(API_URL);
-        const allData = await allRes.json();
-        dispatch({ type: "SET_TEMPLATES", payload: Array.isArray(allData) ? allData : [] });
-
+        await fetchTemplates();
         return data;
       } catch (err) {
         console.error("Submission Error Details:", err);
@@ -142,7 +134,7 @@ export function useTemplates() {
 
     syncTemplates: async () => {
       try {
-        const res = await fetch(
+        const res = await authFetch(
           config.API_URL + "/meta/sync-templates",
           {
             method: "POST",
@@ -152,16 +144,28 @@ export function useTemplates() {
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
-        // Refetch all templates to update the UI
-        const allRes = await fetch(API_URL);
-        const allData = await allRes.json();
-        dispatch({ type: "SET_TEMPLATES", payload: Array.isArray(allData) ? allData : [] });
-
+        await fetchTemplates();
         return data;
       } catch (err) {
         console.error(err);
         throw err;
       }
     },
+  };
+
+  return (
+    <TemplatesContext.Provider value={{ state, ...actions }}>
+      {children}
+    </TemplatesContext.Provider>
+  );
+}
+
+export function useTemplates() {
+  const ctx = useContext(TemplatesContext);
+  if (!ctx) throw new Error("useTemplates must be inside TemplatesProvider");
+  return {
+    ...ctx,
+    templates: ctx.state.templates,
+    loading: ctx.state.loading,
   };
 }

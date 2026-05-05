@@ -52,7 +52,31 @@ Implemented a full identity layer including JWT-based authentication, password h
 - `ProtectedRoute` component created to wrap sensitive frontend areas.
 - `index.js` remains largely untouched except for route mounting.
 
+---
+## Phase 2: Tenancy Foundation
+- **Branch**: `phase/02-tenancy`
+- **Implementation Date**: 2026-05-05
+
+### Summary
+Making the application workspace-aware. Implementing row-level isolation and context propagation.
+
+### Files Created/Modified
+- `server/prisma/schema.prisma`: Added Workspace/Membership models and workspaceId fields.
+- `server/db.js`: Implemented Prisma extension for automatic tenancy isolation.
+- `server/context.js`: Added AsyncLocalStorage for tenant context.
+- `server/middleware/tenancy.js`: Added Express middleware for workspace resolution.
+- `server/index.js`: Mounted tenancy middleware and secured API routes.
+- `src/contexts/AuthContext.jsx`: Added workspace state and `authFetch` helper.
+- `src/store/*`: Updated all stores to be workspace-aware.
+- `src/components/layout/Sidebar.jsx`: Added Workspace Switcher UI.
+
+### Architecture Notes
+- **Logical Isolation**: Every tenant-scoped query is automatically appended with `where: { workspaceId }`.
+- **Zero-Config Fetches**: Frontend developers use `authFetch` which handles headers automatically.
+- **Context Propagation**: Tenant ID flows from Middleware -> AsyncLocalStorage -> Prisma Extension.
+
 ### Verified By
-- [x] Prisma migration successful.
-- [x] Backend tests passed (11/11).
-- [x] Frontend production build successful.
+- [x] Prisma migration and data backfill successful.
+- [x] Workspace switcher UI functional.
+- [x] Automatic filtering verified via manual database inspection (records assigned correctly).
+- [x] API routes secured with `protect` and `tenancyMiddleware`.

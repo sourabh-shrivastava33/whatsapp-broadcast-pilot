@@ -110,3 +110,15 @@ export const getMe = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+export const getWorkspaces = async (req, res) => {
+  try {
+    const memberships = await prisma.membership.findMany({
+      where: { userId: req.user.id },
+      include: { workspace: true },
+    });
+    res.json(memberships.map(m => m.workspace));
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

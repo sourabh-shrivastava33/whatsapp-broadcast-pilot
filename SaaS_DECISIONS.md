@@ -25,10 +25,21 @@ This document records the key architectural decisions and tradeoffs made during 
     - Enhanced security via HTTP-only cookies prevents client-side script access to tokens.
 - **Consequence**: Requires manual implementation of login/register/logout logic and session management.
 
+## ADR 3: Tenancy Isolation Strategy
+- **Status**: Proposed (Phase 2)
+- **Context**: Need a robust way to ensure data isolation between different workspaces.
+- **Decision**: Use a single-database, shared-schema model with **Row-Level Isolation**. Every tenant-scoped table will have a `workspaceId` column.
+- **Implementation**:
+    - Use Prisma Client Extensions to automatically inject `where: { workspaceId }` into all queries.
+    - Use Node.js `AsyncLocalStorage` to propagate the current `workspaceId` from the request middleware down to the database layer.
+- **Rationale**: 
+    - Easiest to maintain and scale initially.
+    - Prisma extensions provide a centralized place to enforce isolation, reducing the risk of developer error (forgetting a `where` clause).
+- **Consequence**: Requires all existing and new tables to support the `workspaceId` field.
+
 ---
 
 ## Pending Decisions
 | Decision Point | Impact | Recommendation |
 | :--- | :--- | :--- |
-| **Tenancy Isolation** | Phase 2 | Shared DB with `tenantId` (Logical Isolation). |
 | **Async Context** | Phase 8 | Use Node.js `AsyncLocalStorage` for `tenantId` propagation. |

@@ -6,8 +6,8 @@ This file tracks the real-time progress of the SaaS transformation.
 | :--- | :--- | :--- | :--- | :--- |
 | **0** | **Foundation** | `phase/00-foundation` | [x] Complete | Merged |
 | **1** | **Auth** | `phase/01-auth` | [x] Complete | Merged |
-| **2** | **Tenancy** | `phase/02-tenancy` | [/] In Progress | - |
-| 3 | RBAC | `phase/03-rbac` | [ ] Pending | - |
+| **2** | **Tenancy** | `phase/02-tenancy` | [x] Complete | Merged |
+| **3** | **RBAC** | `phase/03-rbac` | [/] In Progress | - |
 | 4 | Onboarding | `phase/04-onboarding` | [ ] Pending | - |
 | 5 | UI Shell | `phase/05-ui-shell` | [ ] Pending | - |
 | 6 | Page System | `phase/06-pages` | [ ] Pending | - |

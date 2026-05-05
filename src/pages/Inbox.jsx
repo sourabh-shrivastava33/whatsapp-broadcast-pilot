@@ -21,6 +21,7 @@ import { LeadIntelligenceCard } from '../components/ui/LeadIntelligenceCard'
 import { useAccounts } from '../store/AccountsContext'
 // ... rest of imports
 import { useToast } from '../store/ToastContext'
+import { useAuth } from '../contexts/AuthContext'
 import { socket } from '../lib/socket'
 import { InboxSkeleton } from './inbox/InboxSkeleton'
 import { ConversationItem } from './inbox/ConversationItem'
@@ -33,6 +34,7 @@ export default function Inbox() {
   
   const { accounts } = useAccounts()
   const { toast } = useToast()
+  const { authFetch, activeWorkspace } = useAuth()
   const [conversations, setConversations] = useState([])
   const [selectedId, setSelectedId] = useState(urlContactId)
   const [chatData, setChatData] = useState({ messages: [], isWindowOpen: false })
@@ -51,8 +53,9 @@ export default function Inbox() {
   }, [])
 
   const fetchInbox = useCallback(async () => {
+    if (!activeWorkspace) return;
     try {
-      const res = await fetch(config.API_URL + "/inbox")
+      const res = await authFetch(config.API_URL + "/inbox")
       const data = await res.json()
       const uniqueData = Array.isArray(data) ? Array.from(new Map(data.map(item => [item.id, item])).values()) : []
       setConversations(uniqueData)
@@ -60,18 +63,18 @@ export default function Inbox() {
     } catch (err) {
       console.error('Failed to fetch inbox', err)
     }
-  }, [])
+  }, [authFetch, activeWorkspace])
 
   const fetchMessages = useCallback(async (contactId) => {
     try {
-      const res = await fetch(`${config.API_URL}/inbox/${contactId}`)
+      const res = await authFetch(`${config.API_URL}/inbox/${contactId}`)
       const data = await res.json()
       setChatData(data && typeof data === 'object' ? data : { messages: [], isWindowOpen: false })
       setConversations(prev => prev.map(c => c.id === contactId ? { ...c, unreadCount: 0 } : c))
     } catch (err) {
       console.error('Failed to fetch messages', err)
     }
-  }, [])
+  }, [authFetch])
 
   useEffect(() => {
     fetchInbox()
@@ -155,7 +158,7 @@ export default function Inbox() {
     if (selectedFile) formData.append('file', selectedFile)
 
     try {
-      const res = await fetch(`${config.API_URL}/inbox/${selectedId}/send`, {
+      const res = await authFetch(`${config.API_URL}/inbox/${selectedId}/send`, {
         method: 'POST',
         body: formData
       })
@@ -268,7 +271,7 @@ export default function Inbox() {
                         size="xs"
                         onClick={async () => {
                           try {
-                            await fetch(`${config.API_URL}/contacts/${selectedId}`, {
+                            await authFetch(`${config.API_URL}/contacts/${selectedId}`, {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ leadStage: stage })

@@ -2,7 +2,8 @@ import config from '../config.js';
 /**
  * BroadcastsContext — manages broadcast records.
  */
-import React, { createContext, useContext, useReducer, useEffect } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 
 const BroadcastsContext = createContext(null)
 const API_URL = config.API_URL + "/broadcasts"
@@ -11,6 +12,8 @@ const INITIAL_STATE = { broadcasts: [], loading: true }
 
 function reducer(state, action) {
   switch (action.type) {
+    case 'SET_LOADING':
+      return { ...state, loading: true }
     case 'SET_BROADCASTS':
       return { ...state, broadcasts: action.payload, loading: false }
     case 'ADD_BROADCAST':
@@ -28,43 +31,34 @@ function reducer(state, action) {
 
 export function BroadcastsProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
+  const { authFetch, activeWorkspace } = useAuth()
+
+  const fetchBroadcasts = useCallback(async () => {
+    if (!activeWorkspace) return;
+    dispatch({ type: 'SET_LOADING' });
+    try {
+      const res = await authFetch(API_URL);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        dispatch({ type: 'SET_BROADCASTS', payload: data });
+      } else {
+        console.error('API did not return an array:', data);
+        dispatch({ type: 'SET_BROADCASTS', payload: [] });
+      }
+    } catch (err) {
+      console.error('Failed to fetch broadcasts', err);
+      dispatch({ type: 'SET_BROADCASTS', payload: [] });
+    }
+  }, [authFetch, activeWorkspace]);
 
   useEffect(() => {
-    fetch(API_URL)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          dispatch({ type: 'SET_BROADCASTS', payload: data })
-        } else {
-          console.error('API did not return an array:', data)
-          dispatch({ type: 'SET_BROADCASTS', payload: [] })
-        }
-      })
-      .catch(err => {
-        console.error('Failed to fetch broadcasts', err)
-        dispatch({ type: 'SET_BROADCASTS', payload: [] })
-      })
-  }, [])
+    fetchBroadcasts();
+  }, [fetchBroadcasts]);
 
-  return (
-    <BroadcastsContext.Provider value={{ state, dispatch }}>
-      {children}
-    </BroadcastsContext.Provider>
-  )
-}
-
-export function useBroadcasts() {
-  const ctx = useContext(BroadcastsContext)
-  if (!ctx) throw new Error('useBroadcasts must be inside BroadcastsProvider')
-  const { state, dispatch } = ctx
-
-  return {
-    broadcasts: state.broadcasts,
-    loading: state.loading,
-    
+  const actions = {
     addBroadcast: async (payload) => {
       try {
-        const res = await fetch(API_URL, {
+        const res = await authFetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -82,7 +76,7 @@ export function useBroadcasts() {
     
     updateBroadcast: async (payload) => {
       try {
-        const res = await fetch(`${API_URL}/${payload.id}`, {
+        const res = await authFetch(`${API_URL}/${payload.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -93,5 +87,21 @@ export function useBroadcasts() {
         console.error(err)
       }
     },
+  };
+
+  return (
+    <BroadcastsContext.Provider value={{ state, ...actions }}>
+      {children}
+    </BroadcastsContext.Provider>
+  )
+}
+
+export function useBroadcasts() {
+  const ctx = useContext(BroadcastsContext)
+  if (!ctx) throw new Error('useBroadcasts must be inside BroadcastsProvider')
+  return {
+    ...ctx,
+    broadcasts: ctx.state.broadcasts,
+    loading: ctx.state.loading,
   }
 }

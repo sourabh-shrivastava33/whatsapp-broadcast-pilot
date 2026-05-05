@@ -1,5 +1,6 @@
 import config from '../config.js';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 const MediaContext = createContext();
 
@@ -9,8 +10,10 @@ export function MediaProvider({ children }) {
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const { authFetch, activeWorkspace } = useAuth();
 
   const fetchMedia = useCallback(async (params = {}) => {
+    if (!activeWorkspace) return;
     setLoading(true);
     try {
       const query = new URLSearchParams({
@@ -23,7 +26,7 @@ export function MediaProvider({ children }) {
         ...(params.archived !== undefined && { archived: params.archived }),
       });
 
-      const response = await fetch(`${config.API_URL}/media?${query}`);
+      const response = await authFetch(`${config.API_URL}/media?${query}`);
       if (!response.ok) throw new Error('Failed to fetch media');
       const result = await response.json();
       setMedia(Array.isArray(result.data) ? result.data : []);
@@ -33,22 +36,23 @@ export function MediaProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authFetch, activeWorkspace]);
 
   const fetchFolders = useCallback(async () => {
+    if (!activeWorkspace) return;
     try {
-      const response = await fetch(`${config.API_URL}/folders`);
+      const response = await authFetch(`${config.API_URL}/folders`);
       if (!response.ok) throw new Error('Failed to fetch folders');
       const data = await response.json();
       setFolders(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Folder fetch error:', err);
     }
-  }, []);
+  }, [authFetch, activeWorkspace]);
 
   const createFolder = async (name, parentId = null) => {
     try {
-      const response = await fetch(`${config.API_URL}/folders`, {
+      const response = await authFetch(`${config.API_URL}/folders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, parentId }),
@@ -69,7 +73,7 @@ export function MediaProvider({ children }) {
     if (folderId) formData.append('folderId', folderId);
 
     try {
-      const response = await fetch(`${config.API_URL}/media/upload`, {
+      const response = await authFetch(`${config.API_URL}/media/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -91,7 +95,7 @@ export function MediaProvider({ children }) {
 
   const updateMedia = async (id, data) => {
     try {
-      const response = await fetch(`${config.API_URL}/media/${id}`, {
+      const response = await authFetch(`${config.API_URL}/media/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -108,7 +112,7 @@ export function MediaProvider({ children }) {
 
   const duplicateMedia = async (id) => {
     try {
-      const response = await fetch(`${config.API_URL}/media/${id}/duplicate`, {
+      const response = await authFetch(`${config.API_URL}/media/${id}/duplicate`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Duplication failed');
@@ -123,7 +127,7 @@ export function MediaProvider({ children }) {
 
   const moveMedia = async (id, folderId) => {
     try {
-      const response = await fetch(`${config.API_URL}/media/${id}/move`, {
+      const response = await authFetch(`${config.API_URL}/media/${id}/move`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderId }),
@@ -140,7 +144,7 @@ export function MediaProvider({ children }) {
 
   const archiveMedia = async (id) => {
     try {
-      const response = await fetch(`${config.API_URL}/media/${id}/archive`, {
+      const response = await authFetch(`${config.API_URL}/media/${id}/archive`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Archive failed');
@@ -155,7 +159,7 @@ export function MediaProvider({ children }) {
 
   const deleteMedia = async (id) => {
     try {
-      const response = await fetch(`${config.API_URL}/media/${id}`, {
+      const response = await authFetch(`${config.API_URL}/media/${id}`, {
         method: 'DELETE',
       });
       if (!response.ok) {
@@ -171,7 +175,7 @@ export function MediaProvider({ children }) {
 
   const fetchUsage = async (id) => {
     try {
-      const response = await fetch(`${config.API_URL}/media/${id}/usage`);
+      const response = await authFetch(`${config.API_URL}/media/${id}/usage`);
       if (!response.ok) throw new Error('Failed to fetch usage');
       return await response.json();
     } catch (err) {
@@ -183,7 +187,7 @@ export function MediaProvider({ children }) {
   useEffect(() => {
     fetchMedia();
     fetchFolders();
-  }, [fetchMedia, fetchFolders]);
+  }, [fetchMedia, fetchFolders, activeWorkspace]);
 
   return (
     <MediaContext.Provider value={{ 

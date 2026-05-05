@@ -34,6 +34,8 @@ import { initSocket, getIO } from "./socket.js";
 import { getWhatsAppMediaUrl } from "./whatsapp.js";
 import { getInboundOptInData } from "./leadOptIn.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import { tenancyMiddleware } from "./middleware/tenancy.js";
+import { protect } from "./modules/auth/auth.middleware.js";
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config({ path: '../.env' });
@@ -129,6 +131,7 @@ const webhookLimiter = rateLimit({
 });
 
 app.use("/api/webhooks", webhookLimiter);
+app.use("/api/health", (req, res, next) => next()); // Ensure health is before protected /api
 app.use("/api", generalLimiter);
 
 // fetchWithTimeout moved to utils.js
@@ -206,6 +209,17 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+
+// Apply protection and tenancy to all other API routes
+app.use("/api", (req, res, next) => {
+  // Skip protection for public endpoints
+  if (req.path === '/health' || req.path.startsWith('/webhooks')) {
+    return next();
+  }
+  protect(req, res, () => {
+    tenancyMiddleware(req, res, next);
+  });
+});
 
 app.get("/api/health", async (req, res) => {
   try {

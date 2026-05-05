@@ -1,15 +1,9 @@
 import config from '../config.js';
 /**
  * AccountsContext — manages WhatsApp account connections.
- *
- * Multi-account design:
- *  - Multiple accounts can be `isActive: true` simultaneously.
- *  - `activeAccounts` is the array of all active accounts.
- *  - `primaryAccount` is the first active account (backward compat).
- *  - `activeAccountId` is kept for any legacy callers but derived from primary.
- *  - Toggling an account enables it if inactive, disables it if active.
  */
-import React, { createContext, useContext, useReducer, useEffect } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 
 const AccountsContext = createContext(null)
 const API_BASE = config.API_URL + "/accounts"
@@ -21,6 +15,8 @@ const INITIAL_STATE = {
 
 function reducer(state, action) {
   switch (action.type) {
+    case 'SET_LOADING':
+      return { ...state, loading: true }
     case 'SET_ACCOUNTS':
       return { ...state, accounts: action.payload, loading: false }
 
@@ -51,46 +47,26 @@ function reducer(state, action) {
 
 export function AccountsProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
+  const { authFetch, activeWorkspace } = useAuth()
+
+  const fetchAccounts = useCallback(async () => {
+    if (!activeWorkspace) return;
+    dispatch({ type: 'SET_LOADING' });
+    try {
+      const res = await authFetch(API_BASE);
+      const data = await res.json();
+      dispatch({ type: 'SET_ACCOUNTS', payload: Array.isArray(data) ? data : [] });
+    } catch (err) {
+      console.error('Failed to fetch accounts:', err);
+      dispatch({ type: 'SET_ACCOUNTS', payload: [] });
+    }
+  }, [authFetch, activeWorkspace]);
 
   useEffect(() => {
-    fetch(API_BASE)
-      .then((res) => res.json())
-      .then((data) => dispatch({ type: 'SET_ACCOUNTS', payload: Array.isArray(data) ? data : [] }))
-      .catch((err) => {
-        console.error('Failed to fetch accounts:', err)
-        dispatch({ type: 'SET_ACCOUNTS', payload: [] })
-      })
-  }, [])
+    fetchAccounts();
+  }, [fetchAccounts]);
 
-  return (
-    <AccountsContext.Provider value={{ state, dispatch }}>
-      {children}
-    </AccountsContext.Provider>
-  )
-}
-
-export function useAccounts() {
-  const ctx = useContext(AccountsContext)
-  if (!ctx) throw new Error('useAccounts must be inside AccountsProvider')
-  const { state, dispatch } = ctx
-
-  // Derived: all currently active accounts
-  const activeAccounts = state.accounts.filter((a) => a.isActive && !a.isArchived)
-
-  // Derived: first active account (backward compat for any single-account callers)
-  const primaryAccount = activeAccounts[0] ?? null
-
-  return {
-    accounts: state.accounts,
-    activeAccounts,
-    primaryAccount,
-
-    // Legacy compat — derived from primary, not from localStorage
-    activeAccountId: primaryAccount?.id ?? null,
-    activeAccount: primaryAccount,
-
-    loading: state.loading,
-
+  const actions = {
     addAccount: (savedAccount) => {
       dispatch({ type: 'ADD_ACCOUNT', payload: savedAccount })
     },
@@ -99,16 +75,12 @@ export function useAccounts() {
       dispatch({ type: 'UPDATE_ACCOUNT', payload: updatedAccount })
     },
 
-    /**
-     * Toggles an account's isActive state by calling the appropriate backend endpoint.
-     * Multiple accounts can be active simultaneously.
-     */
     toggleAccount: async (account) => {
       const endpoint = account.isActive
         ? `${API_BASE}/${account.id}/disable`
         : `${API_BASE}/${account.id}/enable`
       try {
-        const res = await fetch(endpoint, { method: 'PUT' })
+        const res = await authFetch(endpoint, { method: 'PUT' })
         if (!res.ok) throw new Error('Toggle failed')
         const data = await res.json()
         dispatch({ type: 'UPDATE_ACCOUNT', payload: data })
@@ -121,7 +93,7 @@ export function useAccounts() {
 
     deleteAccount: async (id) => {
       try {
-        const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' })
+        const res = await authFetch(`${API_BASE}/${id}`, { method: 'DELETE' })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           throw new Error(data.error || 'Failed to delete account')
@@ -133,12 +105,9 @@ export function useAccounts() {
       }
     },
 
-    // Legacy compat — calls enable on the given ID, used by old code
     setActiveAccount: async (id) => {
-      const account = state.accounts.find((a) => a.id === id)
-      if (!account) return
       try {
-        const res = await fetch(`${API_BASE}/${id}/enable`, { method: 'PUT' })
+        const res = await authFetch(`${API_BASE}/${id}/enable`, { method: 'PUT' })
         if (!res.ok) throw new Error('Enable failed')
         const data = await res.json()
         dispatch({ type: 'UPDATE_ACCOUNT', payload: data })
@@ -146,5 +115,30 @@ export function useAccounts() {
         console.error('setActiveAccount error:', err)
       }
     },
+  };
+
+  return (
+    <AccountsContext.Provider value={{ state, dispatch, ...actions }}>
+      {children}
+    </AccountsContext.Provider>
+  )
+}
+
+export function useAccounts() {
+  const ctx = useContext(AccountsContext)
+  if (!ctx) throw new Error('useAccounts must be inside AccountsProvider')
+  const { state, dispatch, ...actions } = ctx
+
+  const activeAccounts = state.accounts.filter((a) => a.isActive && !a.isArchived)
+  const primaryAccount = activeAccounts[0] ?? null
+
+  return {
+    ...actions,
+    accounts: state.accounts,
+    activeAccounts,
+    primaryAccount,
+    activeAccountId: primaryAccount?.id ?? null,
+    activeAccount: primaryAccount,
+    loading: state.loading,
   }
 }

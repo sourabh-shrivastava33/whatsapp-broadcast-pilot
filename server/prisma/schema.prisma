@@ -17,22 +17,40 @@ model User {
   memberships   Membership[]
 }
 
-model Membership {
+model Workspace {
   id          String   @id @default(uuid())
-  userId      String
-  workspaceId String
-  role        String   @default("MEMBER") // OWNER, ADMIN, MEMBER, VIEWER
+  name        String
+  slug        String   @unique
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  // workspace is commented out until Phase 2
-  // workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  accounts    Account[]
+  contacts    Contact[]
+  segments    Segment[]
+  templates   Template[]
+  folders     Folder[]
+  media       Media[]
+  broadcasts  Broadcast[]
+  webhooks    WebhookSetting[]
+  messageLogs MessageLog[]
+}
+
+model Membership {
+  id          String    @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        String    @default("MEMBER") // OWNER, ADMIN, MEMBER, VIEWER
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
 }
 
 model Account {
   id                 String      @id @default(uuid())
+  workspaceId        String
   displayName        String
   phoneNumberId      String      @unique
   displayPhoneNumber String?
@@ -48,28 +66,28 @@ model Account {
   healthScore        Int?        @default(100)
   messagingLimit     Int?        @default(1000)
   broadcasts         Broadcast[]
+  workspace          Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model Contact {
   id              String        @id @default(uuid())
+  workspaceId     String
   name            String
-  phone           String        @unique
+  phone           String
   tags            Json?
   notes           String?
   brokerageNotes  String?
-  leadStage       String        @default("NEW") // NEW, HOT, WARM, COLD, VISIT_BOOKED, CLOSED
+  leadStage       String        @default("NEW")
   status          String        @default("active")
   
-  // Lead Intelligence
   intentScore     Int           @default(0)
   aiSummary       String?
   nextAction      String?
-  qualificationData Json?       // { budget, location, propertyType, timeline, purpose, loanReadiness }
-  aiSessionState    Json?       // Stores the full agent state (handoffs, tool history, etc.)
+  qualificationData Json?
+  aiSessionState    Json?
   
-  // CRM Sync
   lastSyncAt      DateTime?
-  crmId           String?       @unique
+  crmId           String?
   crmStatus       String?       @default("unsynced")
 
   lastBroadcastAt DateTime?
@@ -87,6 +105,10 @@ model Contact {
   lastAccountId   String?
   chatMessages    ChatMessage[]
   messages        MessageLog[]
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, phone])
+  @@unique([workspaceId, crmId])
 }
 
 model ChatMessage {
@@ -103,16 +125,19 @@ model ChatMessage {
 }
 
 model Segment {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
+  workspaceId String
   name        String
   description String?
   filters     Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model Template {
   id              String      @id @default(uuid())
+  workspaceId     String
   metaTemplateId  String?     @unique
   wabaId          String?
   name            String
@@ -132,41 +157,47 @@ model Template {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   broadcasts      Broadcast[]
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model Folder {
-  id        String   @id @default(uuid())
-  name      String
-  parentId  String?
-  parent    Folder?  @relation("SubFolders", fields: [parentId], references: [id])
-  children  Folder[] @relation("SubFolders")
-  media     Media[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  parentId    String?
+  parent      Folder?   @relation("SubFolders", fields: [parentId], references: [id])
+  children    Folder[]  @relation("SubFolders")
+  media       Media[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model Media {
-  id         String   @id @default(uuid())
-  url        String
-  filename   String
-  type       String   // IMAGE, VIDEO, AUDIO, DOCUMENT
-  size       Int
-  tags       Json?    // Array of strings
-  campaign   String?
-  language   String?
-  purpose    String?
-  status     String   @default("active")
-  isArchived Boolean  @default(false)
-  usageCount Int      @default(0)
-  folderId   String?
-  folder     Folder?  @relation(fields: [folderId], references: [id])
-  metadata   Json?    // Technical specs (hash, width, height, duration, etc.)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String    @id @default(uuid())
+  workspaceId String
+  url         String
+  filename    String
+  type        String
+  size        Int
+  tags        Json?
+  campaign    String?
+  language    String?
+  purpose     String?
+  status      String    @default("active")
+  isArchived  Boolean   @default(false)
+  usageCount  Int       @default(0)
+  folderId    String?
+  folder      Folder?   @relation(fields: [folderId], references: [id])
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model Broadcast {
   id            String       @id @default(uuid())
+  workspaceId   String
   accountId     String
   templateId    String
   contactIds    Json
@@ -181,10 +212,12 @@ model Broadcast {
   account       Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
   template      Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
   messages      MessageLog[]
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model MessageLog {
   id             String    @id @default(uuid())
+  workspaceId    String
   broadcastId    String
   contactId      String
   status         String    @default("queued")
@@ -196,6 +229,7 @@ model MessageLog {
   correlationId  String?
   broadcast      Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
   contact        Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model SystemConfig {
@@ -216,6 +250,7 @@ model AuditLog {
 
 model WebhookSetting {
   id            String    @id @default(uuid())
+  workspaceId   String
   url           String
   verifyToken   String
   isActive      Boolean   @default(true)
@@ -226,4 +261,5 @@ model WebhookSetting {
   healthStatus  String    @default("unknown")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
