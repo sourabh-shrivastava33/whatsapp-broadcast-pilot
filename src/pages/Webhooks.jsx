@@ -64,7 +64,7 @@ export default function Webhooks() {
         <div className="info-hint mb-6">
           <Server size={14} className="info-hint-icon" />
           <div className="info-hint-content">
-            <p>Webhooks allow Meta to push real-time updates (like message delivery status and incoming replies) directly to your server. Ensure your <strong>ngrok tunnel</strong> is active for local testing.</p>
+            <p>Webhooks allow Meta to push real-time updates (like message delivery status and incoming replies) directly to your production server for instant processing.</p>
           </div>
         </div>
 

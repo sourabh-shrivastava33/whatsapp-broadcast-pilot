@@ -16,16 +16,16 @@ export function ConfigurationCard({ settings, setSettings, onCopy }) {
           <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
             <input 
               className="form-input" 
-              style={{ flex: 1 }}
-              placeholder="https://your-ngrok-url.app/api/webhooks"
-              value={settings.url}
-              onChange={e => setSettings({ ...settings, url: e.target.value })}
+              style={{ flex: 1, backgroundColor: 'var(--bg-card)', cursor: 'not-allowed' }}
+              value="https://whatsapp-broadcast-pilot.onrender.com/api/webhooks"
+              readOnly
+              disabled
             />
-            <button className="copy-btn" onClick={() => onCopy(settings.url)} type="button">
+            <button className="copy-btn" onClick={() => onCopy("https://whatsapp-broadcast-pilot.onrender.com/api/webhooks")} type="button">
               <Copy size={16} />
             </button>
           </div>
-          <span className="form-hint-text">Expose your local port 3001 using ngrok.</span>
+          <span className="form-hint-text">Production webhook endpoint for real-time events.</span>
         </div>
 
         <div className="form-group">
@@ -33,11 +33,11 @@ export function ConfigurationCard({ settings, setSettings, onCopy }) {
           <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
             <input 
               className="form-input" 
-              style={{ flex: 1 }}
-              type="password"
-              placeholder="Secure token for Meta"
+              style={{ flex: 1, backgroundColor: 'var(--bg-card)', cursor: 'not-allowed' }}
+              type="text"
               value={settings.verifyToken}
-              onChange={e => setSettings({ ...settings, verifyToken: e.target.value })}
+              readOnly
+              disabled
             />
             <button className="copy-btn" onClick={() => onCopy(settings.verifyToken)} type="button">
               <Copy size={16} />
