@@ -16,9 +16,11 @@ import {
   Moon,
   Activity,
   X,
-  ShieldCheck
+  ShieldCheck,
+  LogOut
 } from 'lucide-react'
 import { useTheme } from '../../store/ThemeContext'
+import { useAuth } from '../../contexts/AuthContext'
 import './Sidebar.css'
 
 const navGroups = [
@@ -53,6 +55,7 @@ export function Sidebar({ onExpand, onLock, isMobile, isOpen, onClose }) {
   const [expanded, setExpanded] = useState(false)
   const [locked, setLocked] = useState(false)
   const { theme, toggleTheme } = useTheme()
+  const { logout } = useAuth()
 
   const isActuallyExpanded = isMobile ? isOpen : (expanded || locked);
 
@@ -126,6 +129,20 @@ export function Sidebar({ onExpand, onLock, isMobile, isOpen, onClose }) {
           <span className="sidebar-nav-label">
             {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
           </span>
+        </button>
+        <button
+          className="sidebar-theme-btn"
+          onClick={() => {
+            if (window.confirm('Are you sure you want to logout?')) {
+              logout();
+            }
+          }}
+          aria-label="Logout"
+        >
+          <span className="sidebar-nav-icon">
+            <LogOut size={18} />
+          </span>
+          <span className="sidebar-nav-label">Logout</span>
         </button>
       </div>
 

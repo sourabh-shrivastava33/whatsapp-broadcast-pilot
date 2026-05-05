@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout'
+import { useAuth } from './contexts/AuthContext'
 import { AppProviders } from './store/AppProviders'
 import Loader2 from 'lucide-react/dist/esm/icons/loader-2'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -19,6 +20,15 @@ const Inbox = React.lazy(() => import('./pages/Inbox'))
 const Webhooks = React.lazy(() => import('./pages/Webhooks'))
 const MediaLibrary = React.lazy(() => import('./pages/MediaLibrary'))
 const AccountHealth = React.lazy(() => import('./pages/AccountHealth'))
+const Login = React.lazy(() => import('./pages/auth/Login'))
+const Register = React.lazy(() => import('./pages/auth/Register'))
+
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <FullPageLoader />;
+  if (!user) return <Navigate to="/auth/login" />;
+  return <AppLayout>{children}</AppLayout>;
+};
 
 const FullPageLoader = () => (
   <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-app)' }}>
@@ -30,25 +40,34 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AppProviders>
-        <AppLayout>
-          <Suspense fallback={<FullPageLoader />}>
-            <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/accounts" element={<Accounts />} />
-          <Route path="/health" element={<AccountHealth />} />
-          <Route path="/contacts" element={<Contacts />} />
-          <Route path="/inbox" element={<Inbox />} />
-          <Route path="/webhooks" element={<Webhooks />} />
-          <Route path="/media" element={<MediaLibrary />} />
-          <Route path="/templates" element={<Templates />} />
-          <Route path="/templates/new" element={<TemplateBuilder />} />
-          <Route path="/templates/:id/edit" element={<TemplateBuilder />} />
-          <Route path="/broadcast" element={<Broadcast />} />
-          <Route path="/broadcast/:id" element={<BroadcastDetail />} />
-          <Route path="/compliance" element={<Compliance />} />
-            </Routes>
-          </Suspense>
-        </AppLayout>
+        <Suspense fallback={<FullPageLoader />}>
+          <Routes>
+            {/* Public Auth Routes */}
+            <Route path="/auth/login" element={<Login />} />
+            <Route path="/auth/register" element={<Register />} />
+
+            {/* Protected App Routes */}
+            <Route path="/*" element={
+              <ProtectedRoute>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/accounts" element={<Accounts />} />
+                  <Route path="/health" element={<AccountHealth />} />
+                  <Route path="/contacts" element={<Contacts />} />
+                  <Route path="/inbox" element={<Inbox />} />
+                  <Route path="/webhooks" element={<Webhooks />} />
+                  <Route path="/media" element={<MediaLibrary />} />
+                  <Route path="/templates" element={<Templates />} />
+                  <Route path="/templates/new" element={<TemplateBuilder />} />
+                  <Route path="/templates/:id/edit" element={<TemplateBuilder />} />
+                  <Route path="/broadcast" element={<Broadcast />} />
+                  <Route path="/broadcast/:id" element={<BroadcastDetail />} />
+                  <Route path="/compliance" element={<Compliance />} />
+                </Routes>
+              </ProtectedRoute>
+            } />
+          </Routes>
+        </Suspense>
       </AppProviders>
     </ErrorBoundary>
   )

@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
 import pg from "pg";
 import { prisma } from "./db.js";
 import fs from "fs";
@@ -32,6 +33,7 @@ import {
 import { initSocket, getIO } from "./socket.js";
 import { getWhatsAppMediaUrl } from "./whatsapp.js";
 import { getInboundOptInData } from "./leadOptIn.js";
+import authRoutes from "./modules/auth/auth.routes.js";
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config({ path: '../.env' });
@@ -59,6 +61,7 @@ const corsOptions = {
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 };
 app.use(cors(corsOptions));
+app.use(cookieParser());
 
 const httpServer = http.createServer(app);
 const io = initSocket(httpServer, {
@@ -201,6 +204,8 @@ app.get("/", (req, res) => {
     timestamp: new Date()
   });
 });
+
+app.use("/api/auth", authRoutes);
 
 app.get("/api/health", async (req, res) => {
   try {

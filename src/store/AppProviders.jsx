@@ -10,12 +10,14 @@ import { TemplatesProvider } from './TemplatesContext'
 import { BroadcastsProvider } from './BroadcastsContext'
 import { MediaProvider } from './MediaContext'
 import { ToastProvider } from './ToastContext'
+import { AuthProvider } from '../contexts/AuthContext'
 
 export function AppProviders({ children }) {
   return (
     <ThemeProvider>
       <ToastProvider>
-        <AccountsProvider>
+        <AuthProvider>
+          <AccountsProvider>
           <ContactsProvider>
             <MediaProvider>
               <TemplatesProvider>
@@ -26,7 +28,8 @@ export function AppProviders({ children }) {
             </MediaProvider>
           </ContactsProvider>
         </AccountsProvider>
-      </ToastProvider>
-    </ThemeProvider>
+      </AuthProvider>
+    </ToastProvider>
+  </ThemeProvider>
   )
 }
