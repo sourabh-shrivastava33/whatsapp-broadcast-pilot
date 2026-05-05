@@ -1,11 +1,4 @@
-import { PrismaClient } from "@prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { createClient } from "@libsql/client";
-import dotenv from "dotenv";
-dotenv.config();
-
-const adapter = new PrismaLibSql({ url: "file:dev.db" });
-const prisma = new PrismaClient({ adapter });
+import { prisma } from "./db.js";
 
 const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const WABA_ID = process.env.WABA_ID;

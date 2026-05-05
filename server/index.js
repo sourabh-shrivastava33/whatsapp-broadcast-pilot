@@ -33,7 +33,7 @@ import { initSocket, getIO } from "./socket.js";
 import { getWhatsAppMediaUrl } from "./whatsapp.js";
 import { getInboundOptInData } from "./leadOptIn.js";
 
-dotenv.config();
+dotenv.config({ path: '../.env' });
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
@@ -567,14 +567,26 @@ async function resolveMetaMedia(handle, accessToken) {
     const buffer = await fileRes.arrayBuffer();
     const extension = metadata.mime_type?.split("/")[1]?.split(";")[0] || "png";
     const filename = `synced-${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
-    const filePath = path.join("uploads", filename);
 
-    if (!fs.existsSync("uploads")) fs.mkdirSync("uploads");
-    fs.writeFileSync(filePath, Buffer.from(buffer));
+    // 3. Upload to Supabase 'media' bucket instead of local filesystem
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("media")
+      .upload(filename, Buffer.from(buffer), {
+        contentType: metadata.mime_type,
+        upsert: false,
+      });
 
-    // Determine the host for the local URL
-    const host = process.env.BACKEND_URL || "http://localhost:3001";
-    return `${host}/uploads/${filename}`;
+    if (uploadError) {
+      console.error(`[MediaResolve] Cloud storage upload failed:`, uploadError.message);
+      return null;
+    }
+
+    // 4. Get Public URL
+    const { data: urlData } = supabase.storage
+      .from("media")
+      .getPublicUrl(filename);
+    
+    return urlData.publicUrl;
   } catch (err) {
     console.error(`[MediaResolve] Error resolving ${handle}:`, err.message);
     return null;
