@@ -41,7 +41,7 @@ docker-compose.override.yml
 
 # Prisma
 /server/generated/
-/server/prisma/migrations/
+
 
 # AI and Local Artifacts
 .gemini/

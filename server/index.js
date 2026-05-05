@@ -33,7 +33,9 @@ import { initSocket, getIO } from "./socket.js";
 import { getWhatsAppMediaUrl } from "./whatsapp.js";
 import { getInboundOptInData } from "./leadOptIn.js";
 
-dotenv.config({ path: '../.env' });
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config({ path: '../.env' });
+}
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
