@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import config from '../config.js';
 
 const AuthContext = createContext(null);
 
@@ -14,7 +15,7 @@ export const AuthProvider = ({ children }) => {
 
   const checkUser = async () => {
     try {
-      const response = await fetch('/api/auth/me');
+      const response = await fetch(`${config.API_URL}/auth/me`);
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
@@ -32,12 +33,11 @@ export const AuthProvider = ({ children }) => {
 
   const fetchWorkspaces = async () => {
     try {
-      const response = await fetch('/api/auth/workspaces');
+      const response = await fetch(`${config.API_URL}/auth/workspaces`);
       if (response.ok) {
         const data = await response.json();
         setWorkspaces(data);
         if (data.length > 0 && !activeWorkspace) {
-          // Initialize active workspace from localStorage or default to first
           const savedId = localStorage.getItem('activeWorkspaceId');
           const saved = data.find(w => w.id === savedId);
           setActiveWorkspace(saved || data[0]);
@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (email, password) => {
-    const response = await fetch('/api/auth/login', {
+    const response = await fetch(`${config.API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -76,7 +76,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (email, password, name) => {
-    const response = await fetch('/api/auth/register', {
+    const response = await fetch(`${config.API_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name }),
@@ -85,8 +85,6 @@ export const AuthProvider = ({ children }) => {
     if (response.ok) {
       const { user: userData } = await response.json();
       setUser(userData);
-      // For a new user, we might need to create a default workspace in the backend
-      // But for Phase 2 we assume they'll be added to one or we'll add a creator flow later
       await fetchWorkspaces();
       return { success: true };
     } else {
@@ -96,14 +94,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await fetch(`${config.API_URL}/auth/logout`, { method: 'POST' });
     setUser(null);
     setWorkspaces([]);
     setActiveWorkspace(null);
     localStorage.removeItem('activeWorkspaceId');
   };
 
-  // Wrapper for fetch that includes workspace ID
   const authFetch = async (url, options = {}) => {
     const headers = {
       ...options.headers,

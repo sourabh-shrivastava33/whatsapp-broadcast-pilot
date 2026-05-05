@@ -1,8 +1,11 @@
 import React from 'react'
 import Globe from 'lucide-react/dist/esm/icons/globe'
 import Copy from 'lucide-react/dist/esm/icons/copy'
+import config from '../../config.js'
 
 export function ConfigurationCard({ settings, setSettings, onCopy }) {
+  const webhookUrl = `${config.API_BASE_URL}/api/webhooks`;
+
   return (
     <div className="config-card">
       <div className="config-card-header">
@@ -17,11 +20,11 @@ export function ConfigurationCard({ settings, setSettings, onCopy }) {
             <input 
               className="form-input" 
               style={{ flex: 1, backgroundColor: 'var(--bg-card)', cursor: 'not-allowed' }}
-              value="https://whatsapp-broadcast-pilot.onrender.com/api/webhooks"
+              value={webhookUrl}
               readOnly
               disabled
             />
-            <button className="copy-btn" onClick={() => onCopy("https://whatsapp-broadcast-pilot.onrender.com/api/webhooks")} type="button">
+            <button className="copy-btn" onClick={() => onCopy(webhookUrl)} type="button">
               <Copy size={16} />
             </button>
           </div>
