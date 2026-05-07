@@ -3,6 +3,7 @@ import React, { useState } from 'react'
 import { X, Search, Building2, Smartphone, CheckCircle, AlertCircle, Loader2, RefreshCw, Import } from 'lucide-react'
 import { Button } from './Button'
 import { useAccounts } from '../../store/AccountsContext'
+import { useAuth } from '../../contexts/AuthContext'
 import './MetaDiscoveryModal.css'
 
 const QUALITY_COLORS = {
@@ -14,6 +15,7 @@ const QUALITY_COLORS = {
 
 export function MetaDiscoveryModal({ isOpen, onClose }) {
   const { addAccount } = useAccounts()
+  const { authFetch } = useAuth()
   const [step, setStep] = useState(1) // 1 = credentials, 2 = results
   const [businessId, setBusinessId] = useState('')
   const [accessToken, setAccessToken] = useState('')
@@ -36,7 +38,7 @@ export function MetaDiscoveryModal({ isOpen, onClose }) {
     setDiscovered([])
     setSelected(new Set())
     try {
-      const res = await fetch(config.API_URL + "/meta/discover", {
+      const res = await authFetch(config.API_URL + "/meta/discover", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ businessId: businessId.trim(), accessToken: accessToken.trim() }),
@@ -72,7 +74,7 @@ export function MetaDiscoveryModal({ isOpen, onClose }) {
     const results = []
     for (const number of toImport) {
       try {
-        const res = await fetch(config.API_URL + "/meta/sync-account", {
+        const res = await authFetch(config.API_URL + "/meta/sync-account", {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(number),

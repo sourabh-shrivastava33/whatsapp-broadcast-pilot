@@ -6,8 +6,10 @@ import Upload from 'lucide-react/dist/esm/icons/upload';
 import FileText from 'lucide-react/dist/esm/icons/file-text';
 import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle';
 import config from '../../config';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function ContactImportModal({ isOpen, onClose, onImported }) {
+  const { authFetch } = useAuth();
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -47,7 +49,7 @@ export function ContactImportModal({ isOpen, onClose, onImported }) {
       skipEmptyLines: true,
       complete: async (results) => {
         try {
-          const res = await fetch(`${config.API_URL}/contacts/import`, {
+          const res = await authFetch(`${config.API_URL}/contacts/import`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contacts: results.data }),

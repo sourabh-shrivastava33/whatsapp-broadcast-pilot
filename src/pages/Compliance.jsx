@@ -18,11 +18,13 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { useContacts } from '../store/ContactsContext'
 import { useToast } from '../store/ToastContext'
 import { ComplianceSkeleton } from './compliance/ComplianceSkeleton'
+import { useAuth } from '../contexts/AuthContext'
 import './Compliance.css'
 
 export default function Compliance() {
   const { contacts, loading, blockContact, unblockContact, fetchContacts } = useContacts()
   const { toast } = useToast()
+  const { authFetch } = useAuth()
   const [search, setSearch] = useState('')
   const [filterMode, setFilterMode] = useState('all') // all, opted_in, opted_out, blocklisted
   const fileInputRef = useRef(null)
@@ -94,7 +96,7 @@ export default function Compliance() {
       }).filter(c => !!c.phone)
 
       try {
-        const res = await fetch(`${config.API_URL}/contacts/import`, {
+        const res = await authFetch(`${config.API_URL}/contacts/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contacts: parsedContacts })

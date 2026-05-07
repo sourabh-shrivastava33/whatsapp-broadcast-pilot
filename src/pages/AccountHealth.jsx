@@ -1,6 +1,7 @@
 import config from '../config.js';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Activity, 
   ShieldCheck, 
@@ -45,6 +46,7 @@ const HealthMetricCard = ({ label, value, sub, icon: Icon, color, children }) =>
 
 export default function AccountHealth() {
   const navigate = useNavigate();
+  const { authFetch } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [data, setData] = useState(null);
@@ -54,7 +56,7 @@ export default function AccountHealth() {
 
   // Fetch accounts to choose from
   useEffect(() => {
-    fetch(config.API_URL + "/accounts")
+    authFetch(config.API_URL + "/accounts")
       .then(res => res.json())
       .then(data => {
         const accountsData = Array.isArray(data) ? data : [];
@@ -62,14 +64,14 @@ export default function AccountHealth() {
         if (accountsData.length > 0) setSelectedId(accountsData[0].id);
       })
       .catch(err => console.error('Failed to load accounts', err));
-  }, []);
+  }, [authFetch]);
 
   const fetchHealth = useCallback(async (id) => {
     if (!id) return;
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${config.API_URL}/accounts/${id}/health`);
+      const res = await authFetch(`${config.API_URL}/accounts/${id}/health`);
       const payload = await res.json();
       if (payload.error) throw new Error(payload.error);
       setData(payload.data);
@@ -78,7 +80,7 @@ export default function AccountHealth() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authFetch]);
 
   useEffect(() => {
     if (selectedId) fetchHealth(selectedId);

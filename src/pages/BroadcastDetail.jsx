@@ -21,6 +21,7 @@ import {
 import { Button } from '../components/ui/Button'
 import './BroadcastDetail.css'
 import { socket } from '../lib/socket'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function BroadcastDetail() {
   const navigate = useNavigate()
@@ -30,13 +31,15 @@ export default function BroadcastDetail() {
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
 
+  const { authFetch } = useAuth()
+
   useEffect(() => {
     if (!id || id === 'undefined') {
       setError('Invalid Broadcast ID')
       setLoading(false)
       return
     }
-    fetch(`${config.API_URL}/broadcasts/${id}`)
+    authFetch(`${config.API_URL}/broadcasts/${id}`)
       .then(res => {
         if (!res.ok) throw new Error('Broadcast not found')
         return res.json()

@@ -1,6 +1,7 @@
 import config from '../../config.js';
 import React from 'react'
 import Radio from 'lucide-react/dist/esm/icons/radio'
+import { useAuth } from '../../contexts/AuthContext'
 import {
   AreaChart,
   Area,
@@ -35,9 +36,10 @@ const CustomTooltip = ({ active, payload }) => {
 const ActivityChart = () => {
   const [chartData, setChartData] = React.useState([])
   const [loading, setLoading] = React.useState(true)
+  const { authFetch } = useAuth()
 
   React.useEffect(() => {
-    fetch(config.API_URL + "/stats/broadcast-activity")
+    authFetch(config.API_URL + "/stats/broadcast-activity")
       .then(res => res.json())
       .then(data => {
         setChartData(Array.isArray(data) ? data : [])
@@ -47,7 +49,7 @@ const ActivityChart = () => {
         console.error('Failed to fetch activity stats', err)
         setLoading(false)
       })
-  }, [])
+  }, [authFetch])
 
   if (loading) return <div className="skeleton-pulse" style={{ height: 300, width: '100%', borderRadius: 16 }} />
 
