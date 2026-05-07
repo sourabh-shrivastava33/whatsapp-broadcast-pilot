@@ -394,6 +394,7 @@ app.post("/api/media/upload", upload.single("file"), async (req, res) => {
     // 5. Save to Database
     const media = await prisma.media.create({
       data: {
+        workspaceId: req.workspaceId,
         url: fileUrl,
         filename: fileName,
         type: type,
