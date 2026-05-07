@@ -132,7 +132,20 @@ export function Sidebar({ onExpand, onLock, isMobile, isOpen, onClose }) {
               </button>
             ))}
             <div className="workspace-menu-divider" />
-            <button className="workspace-menu-item create">
+            <button 
+              className="workspace-menu-item create"
+              onClick={async () => {
+                const name = window.prompt('Enter workspace name:');
+                if (name) {
+                  const result = await createWorkspace(name);
+                  if (result.success) {
+                    setShowWorkspaceMenu(false);
+                  } else {
+                    alert(result.error || 'Failed to create workspace');
+                  }
+                }
+              }}
+            >
               + Create Workspace
             </button>
           </div>

@@ -95,6 +95,26 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const createWorkspace = async (name) => {
+    const response = await fetch(`${config.API_URL}/auth/workspaces`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+      credentials: 'include',
+    });
+
+    if (response.ok) {
+      const workspace = await response.json();
+      setWorkspaces(prev => [...prev, workspace]);
+      setActiveWorkspace(workspace);
+      localStorage.setItem('activeWorkspaceId', workspace.id);
+      return { success: true, workspace };
+    } else {
+      const error = await response.json();
+      return { success: false, error: error.error };
+    }
+  };
+
   const logout = async () => {
     await fetch(`${config.API_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
@@ -127,6 +147,7 @@ export const AuthProvider = ({ children }) => {
       register, 
       logout, 
       selectWorkspace,
+      createWorkspace,
       authFetch 
     }}>
       {children}
