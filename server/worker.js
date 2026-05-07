@@ -314,4 +314,12 @@ worker.on("failed", (job, err) => {
   console.error(`[Job ${job.id}] Failed: ${err.message}`);
 });
 
+worker.on("error", (err) => {
+  if (err.message.includes('caller gone')) {
+    console.warn(`[Worker][broadcast-queue] Upstash connection closed (caller gone). BullMQ will automatically reconnect.`);
+  } else {
+    console.error(`[Worker][broadcast-queue] Critical Error:`, err.message);
+  }
+});
+
 export default worker;

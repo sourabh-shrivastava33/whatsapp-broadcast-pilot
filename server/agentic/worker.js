@@ -121,4 +121,12 @@ agentWorker.on('failed', (job, err) => {
   logger.error(`❌ Agent Job ${job.id} failed: ${err.message}`);
 });
 
+agentWorker.on('error', (err) => {
+  if (err.message.includes('caller gone')) {
+    logger.warn(`[Worker][agent-queue] Upstash connection closed (caller gone). BullMQ will automatically reconnect.`);
+  } else {
+    logger.error(`[Worker][agent-queue] Critical Error: ${err.message}`);
+  }
+});
+
 logger.info('🚀 Agent Worker with Multimodal Intelligence Active');

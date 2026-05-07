@@ -4,8 +4,18 @@ import Redis from 'ioredis';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 export const connection = new Redis(REDIS_URL, {
   maxRetriesPerRequest: null,
+  keepAlive: 10000,
+  enableReadyCheck: false,
   // Required for cloud Redis like Upstash
   tls: REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
+});
+
+connection.on('error', (err) => {
+  if (err.message.includes('caller gone')) {
+    console.warn('[Redis] Upstash connection proxy timeout (caller gone). BullMQ will automatically reconnect.');
+  } else {
+    console.error('[Redis] Connection Error:', err.message);
+  }
 });
 
 export const broadcastQueue = new Queue('broadcast-queue', {
