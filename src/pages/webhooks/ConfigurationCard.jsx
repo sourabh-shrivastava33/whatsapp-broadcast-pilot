@@ -26,7 +26,7 @@ export function ConfigurationCard({ settings, setSettings, onCopy }) {
               style={{ flex: 1, backgroundColor: 'var(--bg-card)' }}
               value={settings.url || ''}
               onChange={handleChange}
-              placeholder="https://your-domain.com/api/webhooks"
+              placeholder="https://whatsapp-broadcast-pilot.onrender.com/api/webhooks"
             />
             <button className="copy-btn" onClick={() => onCopy(settings.url)} type="button" title="Copy URL">
               <Copy size={16} />
@@ -42,7 +42,7 @@ export function ConfigurationCard({ settings, setSettings, onCopy }) {
               className="form-input" 
               name="verifyToken"
               style={{ flex: 1, backgroundColor: 'var(--bg-card)' }}
-              type="text"
+              type="password"
               value={settings.verifyToken || ''}
               onChange={handleChange}
               placeholder="your_verify_token"

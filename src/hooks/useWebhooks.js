@@ -10,7 +10,7 @@ export function useWebhooks() {
   const { toast } = useToast();
   const { authFetch } = useAuth();
   const [settings, setSettings] = useState({
-    url: `${config.API_BASE_URL}/api/webhooks`,
+    url: 'https://whatsapp-broadcast-pilot.onrender.com/api/webhooks',
     verifyToken: 'whatsapp_broadcast_crm_token',
     subscriptions: 'messages,statuses',
     isActive: true,
@@ -32,7 +32,7 @@ export function useWebhooks() {
       const res = await authFetch(`${API_BASE}/webhook-settings`);
       const data = await res.json();
       setSettings(data && typeof data === 'object' ? data : {
-        url: `${config.API_BASE_URL}/api/webhooks`,
+        url: 'https://whatsapp-broadcast-pilot.onrender.com/api/webhooks',
         verifyToken: 'whatsapp_broadcast_crm_token',
         subscriptions: 'messages,statuses',
         isActive: true,
