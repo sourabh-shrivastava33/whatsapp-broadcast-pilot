@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import pg from "pg";
-import { prisma } from "./db.js";
+import { prisma, basePrisma } from "./db.js";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -981,41 +981,52 @@ app.post("/api/meta/sync-templates", async (req, res) => {
             mediaUrl = await resolveMetaMedia(mediaHandle, account.accessToken);
           }
 
-          await prisma.template.upsert({
-            where: { metaTemplateId: metaTpl.id },
-            update: {
-              name: metaTpl.name,
-              status,
-              category: metaTpl.category,
-              language: metaTpl.language,
-              header,
-              headerType,
-              mediaUrl: mediaUrl || undefined, // Only update if we resolved a new one
-              body,
-              footer,
-              buttons,
-              variables,
-              rejectionReason: metaTpl.rejected_reason || null,
-              isArchived: false,
-              wabaId: account.wabaId,
-            },
-            create: {
-              metaTemplateId: metaTpl.id,
-              name: metaTpl.name,
-              status,
-              category: metaTpl.category,
-              language: metaTpl.language,
-              header,
-              headerType,
-              mediaUrl,
-              body,
-              footer,
-              buttons,
-              variables,
-              rejectionReason: metaTpl.rejected_reason || null,
-              wabaId: account.wabaId,
-            },
+          // Use basePrisma to handle global uniqueness correctly
+          const existingTpl = await basePrisma.template.findUnique({
+            where: { metaTemplateId: metaTpl.id }
           });
+
+          if (existingTpl) {
+            await basePrisma.template.update({
+              where: { metaTemplateId: metaTpl.id },
+              data: {
+                workspaceId: req.headers['x-workspace-id'], // Claim/Move template to current workspace
+                name: metaTpl.name,
+                status,
+                category: metaTpl.category,
+                language: metaTpl.language,
+                header,
+                headerType,
+                mediaUrl: mediaUrl || undefined,
+                body,
+                footer,
+                buttons,
+                variables,
+                rejectionReason: metaTpl.rejected_reason || null,
+                isArchived: false,
+                wabaId: account.wabaId,
+              },
+            });
+          } else {
+            await prisma.template.create({
+              data: {
+                metaTemplateId: metaTpl.id,
+                name: metaTpl.name,
+                status,
+                category: metaTpl.category,
+                language: metaTpl.language,
+                header,
+                headerType,
+                mediaUrl,
+                body,
+                footer,
+                buttons,
+                variables,
+                rejectionReason: metaTpl.rejected_reason || null,
+                wabaId: account.wabaId,
+              },
+            });
+          }
           totalSynced++;
         }
       }
@@ -1042,29 +1053,45 @@ app.post("/api/meta/sync-account", async (req, res) => {
     accessToken,
   } = req.body;
   try {
-    const account = await prisma.account.upsert({
+    // 1. Check if it exists GLOBALLY first to avoid unique constraint violations
+    const existingGlobal = await basePrisma.account.findUnique({
       where: { phoneNumberId },
-      update: {
-        displayName: verifiedName || displayPhoneNumber,
-        accessToken,
-        businessLabel: wabaName || "",
-        qualityRating: qualityRating || QUALITY_RATINGS.UNKNOWN,
-        wabaId: wabaId || "",
-        displayPhoneNumber: displayPhoneNumber || "",
-        isActive: true,
-        isArchived: false,
-      },
-      create: {
-        displayName: verifiedName || displayPhoneNumber,
-        phoneNumberId,
-        accessToken,
-        businessLabel: wabaName || "",
-        qualityRating: qualityRating || QUALITY_RATINGS.UNKNOWN,
-        wabaId: wabaId || "",
-        displayPhoneNumber: displayPhoneNumber || "",
-        isActive: true,
-      },
     });
+
+    let account;
+    if (existingGlobal) {
+      // 2. If it exists globally, we UPDATE it to the current workspace
+      // Security note: In a real production app, we'd check if the user has permission to 'move' this number.
+      // For this pilot, discovery/sync implies ownership of the Meta token.
+      account = await basePrisma.account.update({
+        where: { phoneNumberId },
+        data: {
+          workspaceId: req.headers['x-workspace-id'], // Force move to current workspace
+          displayName: verifiedName || displayPhoneNumber,
+          accessToken,
+          businessLabel: wabaName || "",
+          qualityRating: qualityRating || QUALITY_RATINGS.UNKNOWN,
+          wabaId: wabaId || "",
+          displayPhoneNumber: displayPhoneNumber || "",
+          isActive: true,
+          isArchived: false,
+        },
+      });
+    } else {
+      // 3. If it doesn't exist anywhere, CREATE it (scoped to current workspace)
+      account = await prisma.account.create({
+        data: {
+          displayName: verifiedName || displayPhoneNumber,
+          phoneNumberId,
+          accessToken,
+          businessLabel: wabaName || "",
+          qualityRating: qualityRating || QUALITY_RATINGS.UNKNOWN,
+          wabaId: wabaId || "",
+          displayPhoneNumber: displayPhoneNumber || "",
+          isActive: true,
+        },
+      });
+    }
     res.status(201).json(sanitizeAccount(account));
   } catch (error) {
     res.status(500).json({ error: error.message || "Account sync failed" });

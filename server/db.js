@@ -17,7 +17,7 @@ import { getTenantId } from "./context.js";
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 
-const basePrisma = new PrismaClient({ adapter });
+export const basePrisma = new PrismaClient({ adapter });
 
 export const prisma = basePrisma.$extends({
   query: {
