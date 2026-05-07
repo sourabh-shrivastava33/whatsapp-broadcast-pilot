@@ -284,6 +284,9 @@ const ROUTE_PERMISSIONS = [
   { pattern: /^\/system\//, methods: ['GET'], permission: PERMISSIONS.WORKSPACE_VIEW },
 ];
 
+// ─── Authentication Routes ─────────────────────────────────────────
+app.use("/api/auth", authRoutes);
+
 // Apply protection, tenancy, and RBAC to all API routes
 app.use("/api", (req, res, next) => {
   // Skip protection for public endpoints
@@ -309,6 +312,8 @@ app.use("/api", (req, res, next) => {
 
 // ─── Module Routes (protected by upstream auth + tenancy + RBAC) ───
 app.use("/api/members", membershipRoutes);
+
+
 
 app.get("/api/health", async (req, res) => {
   try {
@@ -1061,7 +1066,7 @@ app.post("/api/meta/sync-account", async (req, res) => {
     });
     res.status(201).json(sanitizeAccount(account));
   } catch (error) {
-    res.status(500).json({ error: "Account sync failed" });
+    res.status(500).json({ error: error.message || "Account sync failed" });
   }
 });
 
@@ -1076,7 +1081,7 @@ app.get("/api/accounts", async (req, res) => {
     });
     res.json(sanitizeAccount(accounts));
   } catch (error) {
-    res.status(500).json({ error: "Fetch failed" });
+    res.status(500).json({ error: error.message || "Fetch failed" });
   }
 });
 
@@ -1286,7 +1291,7 @@ app.get("/api/accounts/:id/health", async (req, res) => {
       },
     });
   } catch (error) {
-    return sendError(res, error, "Comprehensive health check failed", 500, {
+    return sendError(res, error, error.message || "Comprehensive health check failed", 500, {
       correlationId,
     });
   }
@@ -2737,12 +2742,16 @@ app.post("/api/webhook-settings/test", async (req, res) => {
 
     // Simulate Meta's verification challenge
     const challenge = Math.random().toString(36).substring(7);
-    const testUrl = `${url}?hub.mode=subscribe&hub.verify_token=${verifyToken}&hub.challenge=${challenge}`;
+    const testUrl = `${url}${url.includes('?') ? '&' : '?'}hub.mode=subscribe&hub.verify_token=${verifyToken}&hub.challenge=${challenge}`;
 
-    console.log(`Testing webhook: ${testUrl}`);
+    console.log(`[WebhookTest] Initiating challenge-response handshake to: ${testUrl}`);
 
-    const response = await fetchWithTimeout(testUrl, {}, 5000);
+    const response = await fetchWithTimeout(testUrl, {}, 60000);
     const result = await response.text();
+
+    if (!response.ok) {
+      console.error(`Webhook test failed with status ${response.status}: ${result.substring(0, 100)}`);
+    }
 
     if (response.ok && result === challenge) {
       await prisma.webhookSetting.updateMany({
@@ -2871,7 +2880,11 @@ app.get("/api/webhooks", async (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  const settings = await prisma.webhookSetting.findFirst();
+  // Search for the specific token in our database for any workspace
+  const settings = await prisma.webhookSetting.findFirst({
+    where: { verifyToken: token }
+  });
+  
   const validToken = settings?.verifyToken || process.env.WEBHOOK_VERIFY_TOKEN;
 
   if (mode === "subscribe" && token === validToken) {
@@ -3005,9 +3018,16 @@ app.post("/api/webhooks", async (req, res) => {
               // Use upsert to avoid races where two concurrent webhook handlers
               // try to create the same `phone` and cause a unique-constraint error (P2002).
               let contact = null;
+              
+              if (!account) {
+                console.warn(`[Webhook] No account found for phoneNumberId: ${phoneNumberId}. Skipping message processing.`);
+                continue;
+              }
+
               const inboundAt = new Date();
 
               const contactData = {
+                workspaceId: account.workspaceId,
                 name: value.contacts?.[0]?.profile?.name || "New Lead",
                 phone,
                 tags: ["auto-generated"],
@@ -3017,7 +3037,12 @@ app.post("/api/webhooks", async (req, res) => {
               try {
                 // Use a no-op update to make upsert safe without overwriting existing fields.
                 contact = await prisma.contact.upsert({
-                  where: { phone },
+                  where: { 
+                    workspaceId_phone: {
+                      workspaceId: account.workspaceId,
+                      phone,
+                    }
+                  },
                   update: {},
                   create: contactData,
                 });
@@ -3034,7 +3059,12 @@ app.post("/api/webhooks", async (req, res) => {
                 // fetch the existing contact and continue. Re-throw other errors.
                 if (err && err.code === "P2002") {
                   contact = await prisma.contact.findUnique({
-                    where: { phone },
+                    where: { 
+                      workspaceId_phone: {
+                        workspaceId: account.workspaceId,
+                        phone,
+                      }
+                    },
                   });
                   if (!contact) throw err; // unexpected: rethrow if still missing
                   logger.info(`Recovered from P2002 race for phone=${phone}`, {
@@ -3202,8 +3232,7 @@ app.use((err, req, res, next) => {
   );
 
   res.status(err.status || 500).json({
-    error: "Internal Server Error",
-    details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    error: err.message || "Internal Server Error",
     correlationId,
   });
 });

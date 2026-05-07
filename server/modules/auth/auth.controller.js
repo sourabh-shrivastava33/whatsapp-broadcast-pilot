@@ -19,9 +19,13 @@ async function ensureDefaultWorkspace(userId, userName) {
   });
 
   if (!existingMembership) {
+    const workspaceName = `${userName || 'My'}'s Workspace`;
+    const slug = workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now().toString(36);
+    
     const workspace = await prisma.workspace.create({
       data: {
-        name: `${userName || 'My'}'s Workspace`,
+        name: workspaceName,
+        slug,
         memberships: {
           create: {
             userId,
@@ -72,7 +76,7 @@ export const register = async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 };
 
@@ -109,7 +113,7 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 };
 
@@ -131,7 +135,7 @@ export const getMe = async (req, res) => {
     });
     res.json(user);
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 };
 
@@ -150,7 +154,7 @@ export const getWorkspaces = async (req, res) => {
       role: m.role,
     })));
   } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 };
 
@@ -161,9 +165,12 @@ export const createWorkspace = async (req, res) => {
       return res.status(400).json({ error: 'Workspace name is required' });
     }
 
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now().toString(36);
+
     const workspace = await prisma.workspace.create({
       data: {
         name,
+        slug,
         memberships: {
           create: {
             userId: req.user.id,
@@ -176,6 +183,6 @@ export const createWorkspace = async (req, res) => {
     res.status(201).json(workspace);
   } catch (error) {
     console.error('Create workspace error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 };

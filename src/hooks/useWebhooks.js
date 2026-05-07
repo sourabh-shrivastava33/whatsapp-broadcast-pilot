@@ -85,10 +85,7 @@ export function useWebhooks() {
       const res = await authFetch(`${API_BASE}/webhook-settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ...(newSettings || settings), 
-          url: `${config.API_BASE_URL}/api/webhooks` 
-        })
+        body: JSON.stringify(newSettings || settings)
       });
       const data = await res.json();
       setSettings(data);
@@ -111,7 +108,7 @@ export function useWebhooks() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          url: `${config.API_BASE_URL}/api/webhooks`, 
+          url: settings.url, 
           verifyToken: settings.verifyToken 
         })
       });
