@@ -18,9 +18,13 @@ function reducer(state, action) {
     case 'SET_LOADING':
       return { ...state, loading: true }
     case 'SET_ACCOUNTS':
-      return { ...state, accounts: action.payload, loading: false }
-
+      return { 
+        ...state, 
+        accounts: (Array.isArray(action.payload) ? action.payload : []).filter(a => !!a && typeof a === 'object'), 
+        loading: false 
+      }
     case 'ADD_ACCOUNT':
+      if (!action.payload || typeof action.payload !== 'object') return state;
       return {
         ...state,
         accounts: [...state.accounts, action.payload],
@@ -129,8 +133,8 @@ export function useAccounts() {
   if (!ctx) throw new Error('useAccounts must be inside AccountsProvider')
   const { state, dispatch, ...actions } = ctx
 
-  const activeAccounts = state.accounts.filter((a) => a.isActive && !a.isArchived)
-  const primaryAccount = activeAccounts[0] ?? null
+  const activeAccounts = state.accounts.filter((a) => a && a.isActive && !a.isArchived)
+  const primaryAccount = activeAccounts.length > 0 ? activeAccounts[0] : null
 
   return {
     ...actions,

@@ -33,7 +33,7 @@ export function normalizePhone(phone) {
 export function sanitizeAccount(account) {
   if (!account) return null;
   if (Array.isArray(account)) {
-    return account.map((a) => sanitizeAccount(a));
+    return account.map((a) => sanitizeAccount(a)).filter(a => !!a);
   }
   const { accessToken, ...rest } = account;
   return rest;

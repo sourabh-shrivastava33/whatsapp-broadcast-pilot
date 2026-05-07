@@ -24,8 +24,11 @@ export default function Accounts() {
   const { accounts, loading, toggleAccount, deleteAccount } = useAccounts()
   const { toast } = useToast()
 
-  // Ensure accounts is always an array
-  const safeAccounts = useMemo(() => Array.isArray(accounts) ? accounts : [], [accounts])
+  // Ensure accounts is always a valid array of objects
+  const safeAccounts = useMemo(() => 
+    (Array.isArray(accounts) ? accounts : []).filter(a => !!a && typeof a === 'object'), 
+    [accounts]
+  )
 
   // Group accounts by WABA ID - Memoized for performance
   // Group accounts by WABA ID - Foolproof defensive logic
