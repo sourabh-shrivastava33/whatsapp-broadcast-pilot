@@ -73,6 +73,7 @@ export const register = async (req, res) => {
         email: user.email,
         name: user.name,
       },
+      token,
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -110,6 +111,7 @@ export const login = async (req, res) => {
         email: user.email,
         name: user.name,
       },
+      token,
     });
   } catch (error) {
     console.error('Login error:', error);

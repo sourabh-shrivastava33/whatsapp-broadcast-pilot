@@ -16,13 +16,21 @@ export const AuthProvider = ({ children }) => {
 
   const checkUser = async () => {
     try {
-      const response = await fetch(`${config.API_URL}/auth/me`, { credentials: 'include' });
+      const token = localStorage.getItem('token');
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(`${config.API_URL}/auth/me`, { 
+        headers,
+        credentials: 'include' 
+      });
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
         await fetchWorkspaces();
       } else {
         setUser(null);
+        localStorage.removeItem('token');
       }
     } catch (error) {
       console.error('Failed to fetch user:', error);
@@ -34,7 +42,14 @@ export const AuthProvider = ({ children }) => {
 
   const fetchWorkspaces = async () => {
     try {
-      const response = await fetch(`${config.API_URL}/auth/workspaces`, { credentials: 'include' });
+      const token = localStorage.getItem('token');
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(`${config.API_URL}/auth/workspaces`, { 
+        headers,
+        credentials: 'include' 
+      });
       if (response.ok) {
         const data = await response.json();
         setWorkspaces(data);
@@ -70,7 +85,8 @@ export const AuthProvider = ({ children }) => {
     });
 
     if (response.ok) {
-      const { user: userData } = await response.json();
+      const { user: userData, token } = await response.json();
+      localStorage.setItem('token', token);
       setUser(userData);
       await fetchWorkspaces();
       return { success: true };
@@ -89,7 +105,8 @@ export const AuthProvider = ({ children }) => {
     });
 
     if (response.ok) {
-      const { user: userData } = await response.json();
+      const { user: userData, token } = await response.json();
+      localStorage.setItem('token', token);
       setUser(userData);
       await fetchWorkspaces();
       return { success: true };
@@ -100,9 +117,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   const createWorkspace = async (name) => {
+    const token = localStorage.getItem('token');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const response = await fetch(`${config.API_URL}/auth/workspaces`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ name }),
       credentials: 'include',
     });
@@ -120,19 +141,32 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await fetch(`${config.API_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+    const token = localStorage.getItem('token');
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    await fetch(`${config.API_URL}/auth/logout`, { 
+      method: 'POST', 
+      headers,
+      credentials: 'include' 
+    });
     setUser(null);
     setWorkspaces([]);
     setActiveWorkspace(null);
     localStorage.removeItem('activeWorkspaceId');
+    localStorage.removeItem('token');
   };
 
   const authFetch = async (url, options = {}) => {
+    const token = localStorage.getItem('token');
     const headers = {
       ...options.headers,
     };
     if (activeWorkspace) {
       headers['X-Workspace-Id'] = activeWorkspace.id;
+    }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
     return fetch(url, { 
       ...options, 
