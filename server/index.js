@@ -64,6 +64,7 @@ app.use(
 const corsOptions = {
   origin: IS_PRODUCTION ? ALLOWED_ORIGIN : "*",
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Workspace-Id", "X-Correlation-Id"],
   credentials: true,
 };
 app.use(cors(corsOptions));
