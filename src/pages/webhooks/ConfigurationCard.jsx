@@ -4,7 +4,10 @@ import Copy from 'lucide-react/dist/esm/icons/copy'
 import config from '../../config.js'
 
 export function ConfigurationCard({ settings, setSettings, onCopy }) {
-  const webhookUrl = `${config.API_BASE_URL}/api/webhooks`;
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setSettings(prev => ({ ...prev, [name]: value }));
+  };
 
   return (
     <div className="config-card">
@@ -19,12 +22,13 @@ export function ConfigurationCard({ settings, setSettings, onCopy }) {
           <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
             <input 
               className="form-input" 
-              style={{ flex: 1, backgroundColor: 'var(--bg-card)', cursor: 'not-allowed' }}
-              value={webhookUrl}
-              readOnly
-              disabled
+              name="url"
+              style={{ flex: 1, backgroundColor: 'var(--bg-card)' }}
+              value={settings.url || ''}
+              onChange={handleChange}
+              placeholder="https://your-domain.com/api/webhooks"
             />
-            <button className="copy-btn" onClick={() => onCopy(webhookUrl)} type="button">
+            <button className="copy-btn" onClick={() => onCopy(settings.url)} type="button" title="Copy URL">
               <Copy size={16} />
             </button>
           </div>
@@ -36,13 +40,14 @@ export function ConfigurationCard({ settings, setSettings, onCopy }) {
           <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
             <input 
               className="form-input" 
-              style={{ flex: 1, backgroundColor: 'var(--bg-card)', cursor: 'not-allowed' }}
+              name="verifyToken"
+              style={{ flex: 1, backgroundColor: 'var(--bg-card)' }}
               type="text"
-              value={settings.verifyToken}
-              readOnly
-              disabled
+              value={settings.verifyToken || ''}
+              onChange={handleChange}
+              placeholder="your_verify_token"
             />
-            <button className="copy-btn" onClick={() => onCopy(settings.verifyToken)} type="button">
+            <button className="copy-btn" onClick={() => onCopy(settings.verifyToken)} type="button" title="Copy Token">
               <Copy size={16} />
             </button>
           </div>

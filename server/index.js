@@ -34,8 +34,11 @@ import { initSocket, getIO } from "./socket.js";
 import { getWhatsAppMediaUrl } from "./whatsapp.js";
 import { getInboundOptInData } from "./leadOptIn.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import membershipRoutes from "./modules/membership/membership.routes.js";
 import { tenancyMiddleware } from "./middleware/tenancy.js";
 import { protect } from "./modules/auth/auth.middleware.js";
+import { requirePermission, requireRole, requireRoleAtLeast } from "./middleware/rbac.js";
+import { PERMISSIONS, ROLES } from "./constants/permissions.js";
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config({ path: '../.env' });
@@ -211,16 +214,106 @@ app.get("/", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 
-// Apply protection and tenancy to all other API routes
+// ─── RBAC Route Permission Map ─────────────────────────────────────
+// Maps route patterns to required permissions by HTTP method.
+// Routes not listed here will still require auth + tenancy but no specific permission.
+const ROUTE_PERMISSIONS = [
+  // Accounts
+  { pattern: /^\/accounts$/, methods: ['GET'], permission: PERMISSIONS.ACCOUNTS_VIEW },
+  { pattern: /^\/accounts/, methods: ['PUT', 'DELETE'], permission: PERMISSIONS.ACCOUNTS_MANAGE },
+
+  // Meta API (Account management actions)
+  { pattern: /^\/meta\//, methods: ['POST'], permission: PERMISSIONS.ACCOUNTS_MANAGE },
+
+  // Contacts
+  { pattern: /^\/contacts\/blocklist$/, methods: ['GET'], permission: PERMISSIONS.CONTACTS_VIEW },
+  { pattern: /^\/contacts\/import$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+  { pattern: /^\/contacts\/[^/]+\/block$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+  { pattern: /^\/contacts\/[^/]+\/unblock$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+  { pattern: /^\/contacts\/[^/]+$/, methods: ['DELETE'], permission: PERMISSIONS.CONTACTS_DELETE },
+  { pattern: /^\/contacts\/[^/]+$/, methods: ['PATCH'], permission: PERMISSIONS.CONTACTS_MANAGE },
+  { pattern: /^\/contacts$/, methods: ['GET'], permission: PERMISSIONS.CONTACTS_VIEW },
+  { pattern: /^\/contacts$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+
+  // Segments
+  { pattern: /^\/segments/, methods: ['GET'], permission: PERMISSIONS.CONTACTS_VIEW },
+  { pattern: /^\/segments$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+
+  // Templates
+  { pattern: /^\/templates\/[^/]+\/submit$/, methods: ['POST'], permission: PERMISSIONS.TEMPLATES_MANAGE },
+  { pattern: /^\/templates$/, methods: ['GET'], permission: PERMISSIONS.TEMPLATES_VIEW },
+  { pattern: /^\/templates$/, methods: ['POST'], permission: PERMISSIONS.TEMPLATES_MANAGE },
+  { pattern: /^\/templates\//, methods: ['PUT'], permission: PERMISSIONS.TEMPLATES_MANAGE },
+
+  // Broadcasts
+  { pattern: /^\/broadcasts$/, methods: ['GET'], permission: PERMISSIONS.BROADCASTS_VIEW },
+  { pattern: /^\/broadcasts$/, methods: ['POST'], permission: PERMISSIONS.BROADCASTS_MANAGE },
+  { pattern: /^\/broadcasts\/[^/]+$/, methods: ['GET'], permission: PERMISSIONS.BROADCASTS_VIEW },
+  { pattern: /^\/broadcasts\/[^/]+\/(pause|resume|cancel)$/, methods: ['PUT'], permission: PERMISSIONS.BROADCASTS_MANAGE },
+
+  // Media
+  { pattern: /^\/media\/upload$/, methods: ['POST'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+\/duplicate$/, methods: ['POST'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+\/move$/, methods: ['PATCH'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+\/archive$/, methods: ['POST'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+\/usage$/, methods: ['GET'], permission: PERMISSIONS.MEDIA_VIEW },
+  { pattern: /^\/media\/[^/]+$/, methods: ['DELETE'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+$/, methods: ['PATCH'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media$/, methods: ['GET'], permission: PERMISSIONS.MEDIA_VIEW },
+  { pattern: /^\/media\/proxy$/, methods: ['GET'], permission: PERMISSIONS.MEDIA_VIEW },
+
+  // Folders
+  { pattern: /^\/folders$/, methods: ['GET'], permission: PERMISSIONS.MEDIA_VIEW },
+  { pattern: /^\/folders$/, methods: ['POST'], permission: PERMISSIONS.MEDIA_MANAGE },
+
+  // Inbox
+  { pattern: /^\/inbox\/[^/]+\/send$/, methods: ['POST'], permission: PERMISSIONS.INBOX_SEND },
+  { pattern: /^\/inbox/, methods: ['GET'], permission: PERMISSIONS.INBOX_VIEW },
+
+  // Webhooks (Admin+)
+  { pattern: /^\/webhook-settings\/meta-sync$/, methods: ['POST'], permission: PERMISSIONS.WEBHOOKS_MANAGE },
+  { pattern: /^\/webhook-settings\/test$/, methods: ['POST'], permission: PERMISSIONS.WEBHOOKS_MANAGE },
+  { pattern: /^\/webhook-settings$/, methods: ['GET'], permission: PERMISSIONS.WEBHOOKS_VIEW },
+  { pattern: /^\/webhook-settings$/, methods: ['POST'], permission: PERMISSIONS.WEBHOOKS_MANAGE },
+
+  // Audit Logs (Admin+)
+  { pattern: /^\/audit-logs$/, methods: ['GET'], permission: PERMISSIONS.AUDIT_VIEW },
+
+  // Stats / Analytics
+  { pattern: /^\/stats\//, methods: ['GET'], permission: PERMISSIONS.WORKSPACE_VIEW },
+  { pattern: /^\/system\//, methods: ['GET'], permission: PERMISSIONS.WORKSPACE_VIEW },
+];
+
+// ─── Authentication Routes ─────────────────────────────────────────
+app.use("/api/auth", authRoutes);
+
+// Apply protection, tenancy, and RBAC to all API routes
 app.use("/api", (req, res, next) => {
   // Skip protection for public endpoints
   if (req.path === '/health' || req.path.startsWith('/webhooks')) {
     return next();
   }
   protect(req, res, () => {
-    tenancyMiddleware(req, res, next);
+    tenancyMiddleware(req, res, () => {
+      // ─── RBAC Enforcement ─────────────────────────────
+      const matchedRule = ROUTE_PERMISSIONS.find(
+        (rule) => rule.pattern.test(req.path) && rule.methods.includes(req.method)
+      );
+
+      if (matchedRule) {
+        return requirePermission(matchedRule.permission)(req, res, next);
+      }
+
+      // No specific permission rule — allow (auth + tenancy is enough)
+      next();
+    });
   });
 });
+
+// ─── Module Routes (protected by upstream auth + tenancy + RBAC) ───
+app.use("/api/members", membershipRoutes);
+
+
 
 app.get("/api/health", async (req, res) => {
   try {
@@ -973,7 +1066,7 @@ app.post("/api/meta/sync-account", async (req, res) => {
     });
     res.status(201).json(sanitizeAccount(account));
   } catch (error) {
-    res.status(500).json({ error: "Account sync failed" });
+    res.status(500).json({ error: error.message || "Account sync failed" });
   }
 });
 
@@ -988,7 +1081,7 @@ app.get("/api/accounts", async (req, res) => {
     });
     res.json(sanitizeAccount(accounts));
   } catch (error) {
-    res.status(500).json({ error: "Fetch failed" });
+    res.status(500).json({ error: error.message || "Fetch failed" });
   }
 });
 
@@ -1198,7 +1291,7 @@ app.get("/api/accounts/:id/health", async (req, res) => {
       },
     });
   } catch (error) {
-    return sendError(res, error, "Comprehensive health check failed", 500, {
+    return sendError(res, error, error.message || "Comprehensive health check failed", 500, {
       correlationId,
     });
   }
@@ -2649,12 +2742,16 @@ app.post("/api/webhook-settings/test", async (req, res) => {
 
     // Simulate Meta's verification challenge
     const challenge = Math.random().toString(36).substring(7);
-    const testUrl = `${url}?hub.mode=subscribe&hub.verify_token=${verifyToken}&hub.challenge=${challenge}`;
+    const testUrl = `${url}${url.includes('?') ? '&' : '?'}hub.mode=subscribe&hub.verify_token=${verifyToken}&hub.challenge=${challenge}`;
 
-    console.log(`Testing webhook: ${testUrl}`);
+    console.log(`[WebhookTest] Initiating challenge-response handshake to: ${testUrl}`);
 
-    const response = await fetchWithTimeout(testUrl, {}, 5000);
+    const response = await fetchWithTimeout(testUrl, {}, 60000);
     const result = await response.text();
+
+    if (!response.ok) {
+      console.error(`Webhook test failed with status ${response.status}: ${result.substring(0, 100)}`);
+    }
 
     if (response.ok && result === challenge) {
       await prisma.webhookSetting.updateMany({
@@ -2783,7 +2880,11 @@ app.get("/api/webhooks", async (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  const settings = await prisma.webhookSetting.findFirst();
+  // Search for the specific token in our database for any workspace
+  const settings = await prisma.webhookSetting.findFirst({
+    where: { verifyToken: token }
+  });
+  
   const validToken = settings?.verifyToken || process.env.WEBHOOK_VERIFY_TOKEN;
 
   if (mode === "subscribe" && token === validToken) {
@@ -2917,9 +3018,16 @@ app.post("/api/webhooks", async (req, res) => {
               // Use upsert to avoid races where two concurrent webhook handlers
               // try to create the same `phone` and cause a unique-constraint error (P2002).
               let contact = null;
+              
+              if (!account) {
+                console.warn(`[Webhook] No account found for phoneNumberId: ${phoneNumberId}. Skipping message processing.`);
+                continue;
+              }
+
               const inboundAt = new Date();
 
               const contactData = {
+                workspaceId: account.workspaceId,
                 name: value.contacts?.[0]?.profile?.name || "New Lead",
                 phone,
                 tags: ["auto-generated"],
@@ -2929,7 +3037,12 @@ app.post("/api/webhooks", async (req, res) => {
               try {
                 // Use a no-op update to make upsert safe without overwriting existing fields.
                 contact = await prisma.contact.upsert({
-                  where: { phone },
+                  where: { 
+                    workspaceId_phone: {
+                      workspaceId: account.workspaceId,
+                      phone,
+                    }
+                  },
                   update: {},
                   create: contactData,
                 });
@@ -2946,7 +3059,12 @@ app.post("/api/webhooks", async (req, res) => {
                 // fetch the existing contact and continue. Re-throw other errors.
                 if (err && err.code === "P2002") {
                   contact = await prisma.contact.findUnique({
-                    where: { phone },
+                    where: { 
+                      workspaceId_phone: {
+                        workspaceId: account.workspaceId,
+                        phone,
+                      }
+                    },
                   });
                   if (!contact) throw err; // unexpected: rethrow if still missing
                   logger.info(`Recovered from P2002 race for phone=${phone}`, {
@@ -3114,8 +3232,7 @@ app.use((err, req, res, next) => {
   );
 
   res.status(err.status || 500).json({
-    error: "Internal Server Error",
-    details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    error: err.message || "Internal Server Error",
     correlationId,
   });
 });

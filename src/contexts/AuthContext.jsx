@@ -7,6 +7,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
   const [activeWorkspace, setActiveWorkspace] = useState(null);
+  const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,7 +41,9 @@ export const AuthProvider = ({ children }) => {
         if (data.length > 0 && !activeWorkspace) {
           const savedId = localStorage.getItem('activeWorkspaceId');
           const saved = data.find(w => w.id === savedId);
-          setActiveWorkspace(saved || data[0]);
+          const selected = saved || data[0];
+          setActiveWorkspace(selected);
+          setUserRole(selected?.role || null);
         }
       }
     } catch (error) {
@@ -50,6 +53,7 @@ export const AuthProvider = ({ children }) => {
 
   const selectWorkspace = (workspace) => {
     setActiveWorkspace(workspace);
+    setUserRole(workspace?.role || null);
     if (workspace) {
       localStorage.setItem('activeWorkspaceId', workspace.id);
     } else {
@@ -142,6 +146,7 @@ export const AuthProvider = ({ children }) => {
       user, 
       workspaces, 
       activeWorkspace, 
+      userRole,
       loading, 
       login, 
       register, 

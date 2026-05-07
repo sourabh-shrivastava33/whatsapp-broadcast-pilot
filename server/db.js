@@ -24,7 +24,7 @@ export const prisma = basePrisma.$extends({
     $allModels: {
       async $allOperations({ model, operation, args, query }) {
         // Models that are NOT tenant-scoped
-        const globalModels = ['Workspace', 'User', 'Membership', 'AuditLog', 'SystemConfig'];
+        const globalModels = ['Workspace', 'User', 'Membership', 'AuditLog', 'SystemConfig', 'ChatMessage'];
         
         if (globalModels.includes(model)) {
           return query(args);
@@ -44,7 +44,7 @@ export const prisma = basePrisma.$extends({
         }
         
         // Auto-assign workspaceId on creation
-        if ((operation === 'create' || operation === 'createMany') && tenantId) {
+        if ((operation === 'create' || operation === 'createMany' || operation === 'upsert') && tenantId) {
           if (operation === 'create') {
             args.data = { ...args.data, workspaceId: tenantId };
           } else if (operation === 'createMany') {
@@ -53,6 +53,8 @@ export const prisma = basePrisma.$extends({
             } else {
               args.data = { ...args.data, workspaceId: tenantId };
             }
+          } else if (operation === 'upsert') {
+            args.create = { ...args.create, workspaceId: tenantId };
           }
         }
 
