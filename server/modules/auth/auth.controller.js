@@ -144,7 +144,11 @@ export const getWorkspaces = async (req, res) => {
       where: { userId: req.user.id },
       include: { workspace: true },
     });
-    res.json(memberships.map(m => m.workspace));
+    // Include the user's role for each workspace (needed by frontend RBAC)
+    res.json(memberships.map(m => ({
+      ...m.workspace,
+      role: m.role,
+    })));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }

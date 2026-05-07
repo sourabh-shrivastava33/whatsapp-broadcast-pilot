@@ -34,8 +34,11 @@ import { initSocket, getIO } from "./socket.js";
 import { getWhatsAppMediaUrl } from "./whatsapp.js";
 import { getInboundOptInData } from "./leadOptIn.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import membershipRoutes from "./modules/membership/membership.routes.js";
 import { tenancyMiddleware } from "./middleware/tenancy.js";
 import { protect } from "./modules/auth/auth.middleware.js";
+import { requirePermission, requireRole, requireRoleAtLeast } from "./middleware/rbac.js";
+import { PERMISSIONS, ROLES } from "./constants/permissions.js";
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config({ path: '../.env' });
@@ -211,16 +214,101 @@ app.get("/", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 
-// Apply protection and tenancy to all other API routes
+// ─── RBAC Route Permission Map ─────────────────────────────────────
+// Maps route patterns to required permissions by HTTP method.
+// Routes not listed here will still require auth + tenancy but no specific permission.
+const ROUTE_PERMISSIONS = [
+  // Accounts
+  { pattern: /^\/accounts$/, methods: ['GET'], permission: PERMISSIONS.ACCOUNTS_VIEW },
+  { pattern: /^\/accounts/, methods: ['PUT', 'DELETE'], permission: PERMISSIONS.ACCOUNTS_MANAGE },
+
+  // Meta API (Account management actions)
+  { pattern: /^\/meta\//, methods: ['POST'], permission: PERMISSIONS.ACCOUNTS_MANAGE },
+
+  // Contacts
+  { pattern: /^\/contacts\/blocklist$/, methods: ['GET'], permission: PERMISSIONS.CONTACTS_VIEW },
+  { pattern: /^\/contacts\/import$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+  { pattern: /^\/contacts\/[^/]+\/block$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+  { pattern: /^\/contacts\/[^/]+\/unblock$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+  { pattern: /^\/contacts\/[^/]+$/, methods: ['DELETE'], permission: PERMISSIONS.CONTACTS_DELETE },
+  { pattern: /^\/contacts\/[^/]+$/, methods: ['PATCH'], permission: PERMISSIONS.CONTACTS_MANAGE },
+  { pattern: /^\/contacts$/, methods: ['GET'], permission: PERMISSIONS.CONTACTS_VIEW },
+  { pattern: /^\/contacts$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+
+  // Segments
+  { pattern: /^\/segments/, methods: ['GET'], permission: PERMISSIONS.CONTACTS_VIEW },
+  { pattern: /^\/segments$/, methods: ['POST'], permission: PERMISSIONS.CONTACTS_MANAGE },
+
+  // Templates
+  { pattern: /^\/templates\/[^/]+\/submit$/, methods: ['POST'], permission: PERMISSIONS.TEMPLATES_MANAGE },
+  { pattern: /^\/templates$/, methods: ['GET'], permission: PERMISSIONS.TEMPLATES_VIEW },
+  { pattern: /^\/templates$/, methods: ['POST'], permission: PERMISSIONS.TEMPLATES_MANAGE },
+  { pattern: /^\/templates\//, methods: ['PUT'], permission: PERMISSIONS.TEMPLATES_MANAGE },
+
+  // Broadcasts
+  { pattern: /^\/broadcasts$/, methods: ['GET'], permission: PERMISSIONS.BROADCASTS_VIEW },
+  { pattern: /^\/broadcasts$/, methods: ['POST'], permission: PERMISSIONS.BROADCASTS_MANAGE },
+  { pattern: /^\/broadcasts\/[^/]+$/, methods: ['GET'], permission: PERMISSIONS.BROADCASTS_VIEW },
+  { pattern: /^\/broadcasts\/[^/]+\/(pause|resume|cancel)$/, methods: ['PUT'], permission: PERMISSIONS.BROADCASTS_MANAGE },
+
+  // Media
+  { pattern: /^\/media\/upload$/, methods: ['POST'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+\/duplicate$/, methods: ['POST'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+\/move$/, methods: ['PATCH'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+\/archive$/, methods: ['POST'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+\/usage$/, methods: ['GET'], permission: PERMISSIONS.MEDIA_VIEW },
+  { pattern: /^\/media\/[^/]+$/, methods: ['DELETE'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media\/[^/]+$/, methods: ['PATCH'], permission: PERMISSIONS.MEDIA_MANAGE },
+  { pattern: /^\/media$/, methods: ['GET'], permission: PERMISSIONS.MEDIA_VIEW },
+  { pattern: /^\/media\/proxy$/, methods: ['GET'], permission: PERMISSIONS.MEDIA_VIEW },
+
+  // Folders
+  { pattern: /^\/folders$/, methods: ['GET'], permission: PERMISSIONS.MEDIA_VIEW },
+  { pattern: /^\/folders$/, methods: ['POST'], permission: PERMISSIONS.MEDIA_MANAGE },
+
+  // Inbox
+  { pattern: /^\/inbox\/[^/]+\/send$/, methods: ['POST'], permission: PERMISSIONS.INBOX_SEND },
+  { pattern: /^\/inbox/, methods: ['GET'], permission: PERMISSIONS.INBOX_VIEW },
+
+  // Webhooks (Admin+)
+  { pattern: /^\/webhook-settings\/meta-sync$/, methods: ['POST'], permission: PERMISSIONS.WEBHOOKS_MANAGE },
+  { pattern: /^\/webhook-settings\/test$/, methods: ['POST'], permission: PERMISSIONS.WEBHOOKS_MANAGE },
+  { pattern: /^\/webhook-settings$/, methods: ['GET'], permission: PERMISSIONS.WEBHOOKS_VIEW },
+  { pattern: /^\/webhook-settings$/, methods: ['POST'], permission: PERMISSIONS.WEBHOOKS_MANAGE },
+
+  // Audit Logs (Admin+)
+  { pattern: /^\/audit-logs$/, methods: ['GET'], permission: PERMISSIONS.AUDIT_VIEW },
+
+  // Stats / Analytics
+  { pattern: /^\/stats\//, methods: ['GET'], permission: PERMISSIONS.WORKSPACE_VIEW },
+  { pattern: /^\/system\//, methods: ['GET'], permission: PERMISSIONS.WORKSPACE_VIEW },
+];
+
+// Apply protection, tenancy, and RBAC to all API routes
 app.use("/api", (req, res, next) => {
   // Skip protection for public endpoints
   if (req.path === '/health' || req.path.startsWith('/webhooks')) {
     return next();
   }
   protect(req, res, () => {
-    tenancyMiddleware(req, res, next);
+    tenancyMiddleware(req, res, () => {
+      // ─── RBAC Enforcement ─────────────────────────────
+      const matchedRule = ROUTE_PERMISSIONS.find(
+        (rule) => rule.pattern.test(req.path) && rule.methods.includes(req.method)
+      );
+
+      if (matchedRule) {
+        return requirePermission(matchedRule.permission)(req, res, next);
+      }
+
+      // No specific permission rule — allow (auth + tenancy is enough)
+      next();
+    });
   });
 });
+
+// ─── Module Routes (protected by upstream auth + tenancy + RBAC) ───
+app.use("/api/members", membershipRoutes);
 
 app.get("/api/health", async (req, res) => {
   try {

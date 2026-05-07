@@ -30,6 +30,9 @@ export const tenancyMiddleware = async (req, res, next) => {
     if (!membership) {
       return res.status(403).json({ error: 'Access denied to this workspace' });
     }
+
+    // Attach full membership (including role) for downstream RBAC checks
+    req.membership = membership;
   }
 
   // 4. Run the request within the tenancy context

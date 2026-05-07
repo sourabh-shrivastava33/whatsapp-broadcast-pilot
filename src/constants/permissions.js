@@ -1,12 +1,8 @@
 /**
- * RBAC Permission System
+ * Frontend Permissions Constants
  * 
- * Roles are hierarchical: OWNER > ADMIN > MEMBER > VIEWER
- * Each role has a defined set of permissions.
- * 
- * Used by:
- *   - server/middleware/rbac.js (enforcement)
- *   - src/constants/permissions.js (frontend mirror)
+ * Mirror of server/constants/permissions.js for frontend use.
+ * Keep in sync with the backend definitions.
  */
 
 export const ROLES = {
@@ -16,10 +12,6 @@ export const ROLES = {
   VIEWER: 'VIEWER',
 };
 
-/**
- * Role hierarchy for comparison operations.
- * Higher number = more privileged.
- */
 export const ROLE_HIERARCHY = {
   [ROLES.VIEWER]: 0,
   [ROLES.MEMBER]: 1,
@@ -28,45 +20,26 @@ export const ROLE_HIERARCHY = {
 };
 
 export const PERMISSIONS = {
-  // Workspace management
   WORKSPACE_VIEW: 'workspace:view',
   WORKSPACE_EDIT: 'workspace:edit',
   WORKSPACE_DELETE: 'workspace:delete',
-  
-  // Member management
   MEMBERS_VIEW: 'members:view',
   MEMBERS_MANAGE: 'members:manage',
-  
-  // WhatsApp Accounts (WABA)
   ACCOUNTS_VIEW: 'accounts:view',
   ACCOUNTS_MANAGE: 'accounts:manage',
-  
-  // Contacts
   CONTACTS_VIEW: 'contacts:view',
   CONTACTS_MANAGE: 'contacts:manage',
   CONTACTS_DELETE: 'contacts:delete',
-  
-  // Broadcasts
   BROADCASTS_VIEW: 'broadcasts:view',
   BROADCASTS_MANAGE: 'broadcasts:manage',
-  
-  // Templates
   TEMPLATES_VIEW: 'templates:view',
   TEMPLATES_MANAGE: 'templates:manage',
-  
-  // Media
   MEDIA_VIEW: 'media:view',
   MEDIA_MANAGE: 'media:manage',
-  
-  // Webhooks
   WEBHOOKS_VIEW: 'webhooks:view',
   WEBHOOKS_MANAGE: 'webhooks:manage',
-
-  // Inbox
   INBOX_VIEW: 'inbox:view',
   INBOX_SEND: 'inbox:send',
-
-  // System-level
   SYSTEM_MANAGE: 'system:manage',
   AUDIT_VIEW: 'audit:view',
 };
@@ -122,22 +95,10 @@ export const ROLE_PERMISSIONS = {
   ],
 };
 
-/**
- * Check if a role has a specific permission.
- * @param {string} role - One of ROLES values
- * @param {string} permission - One of PERMISSIONS values
- * @returns {boolean}
- */
 export const hasPermission = (role, permission) => {
   return ROLE_PERMISSIONS[role]?.includes(permission) || false;
 };
 
-/**
- * Check if roleA is equal or higher than roleB in the hierarchy.
- * @param {string} roleA 
- * @param {string} roleB 
- * @returns {boolean}
- */
 export const isRoleAtLeast = (roleA, roleB) => {
   return (ROLE_HIERARCHY[roleA] ?? -1) >= (ROLE_HIERARCHY[roleB] ?? -1);
 };
